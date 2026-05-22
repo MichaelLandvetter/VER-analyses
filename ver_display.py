@@ -7,7 +7,7 @@ from typing import List
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from ver_config import ACQ_CONFIG, DISPLAY_CONFIG, EPOCH_CONFIG
 

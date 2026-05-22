@@ -7,9 +7,9 @@ import time
 from pathlib import Path
 
 import numpy as np
-from PyQt5.QtCore import QObject, QThread, pyqtSignal
-from PyQt5.QtWidgets import (
-    QAction,
+from PyQt6.QtCore import QObject, QThread, pyqtSignal
+from PyQt6.QtGui import QAction
+from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
     QFormLayout,
@@ -305,10 +305,10 @@ class VERMainWindow(QMainWindow):
                 self,
                 "End of file",
                 "Reached end of file. Save report for collected sessions?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.Yes,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
             )
-            if resp == QMessageBox.Yes:
+            if resp == QMessageBox.StandardButton.Yes:
                 self.save_report()
         self.display.set_status("End of file reached")
 
@@ -340,7 +340,7 @@ def main():
     app = QApplication(sys.argv)
     win = VERMainWindow()
     win.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
