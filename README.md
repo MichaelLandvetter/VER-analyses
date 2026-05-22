@@ -8,7 +8,7 @@ This repository contains a modular Python program for VER (Visually Evoked Respo
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-pip python3-pyqt5 python3-scipy python3-numpy python3-matplotlib
+sudo apt install -y python3 python3-pip python3-pyqt6 python3-scipy python3-numpy python3-matplotlib
 python3 -m pip install --upgrade pip
 python3 -m pip install -r requirements.txt
 ```
