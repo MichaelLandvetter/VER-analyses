@@ -90,8 +90,14 @@ class VERDisplayWidget(QWidget):
             self.flash_times.append(t)
 
         if self.flash_times:
-            y_max = np.max(y_raw) if len(y_raw) else 1.0
-            self.flash_scatter.setData([(ft, y_max) for ft in self.flash_times if x[0] <= ft <= x[-1]])
+            y_max = float(np.max(y_raw)) if len(y_raw) else 1.0
+            visible = [ft for ft in self.flash_times if x[0] <= ft <= x[-1]]
+            if visible:
+                fx = np.array(visible, dtype=float)
+                fy = np.full(len(visible), y_max, dtype=float)
+                self.flash_scatter.setData(x=fx, y=fy)
+            else:
+                self.flash_scatter.setData(x=[], y=[])
 
     def update_scope_panel(self, epoch_time_ms: np.ndarray, latest_epoch: np.ndarray, running_average: np.ndarray, flash_count: int, session_number: int) -> None:
         curve = self.plot_scope.plot(epoch_time_ms, latest_epoch, pen=pg.mkPen((180, 180, 180, 120), width=1))
@@ -139,7 +145,7 @@ class VERDisplayWidget(QWidget):
         self.sample_index = 0
         self.curve_raw.setData([], [])
         self.curve_filtered.setData([], [])
-        self.flash_scatter.setData([])
+        self.flash_scatter.setData(x=[], y=[])
         self.clear_scope_panel()
         self.wavelet_image.setImage(np.zeros((2, 2)))
         self.plot_sessions.clear()
