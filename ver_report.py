@@ -43,7 +43,7 @@ def save_ver_report(
     session_wavelets_arr = np.asarray(session_wavelets)
     freq_min = float(session_wavelet_freqs[0])
     freq_max = float(session_wavelet_freqs[-1])
-    labels = session_labels or [f"Session {idx}" for idx in range(1, len(averages) + 1)]
+    labels = session_labels or [f"Minute {idx}" for idx in range(1, len(averages) + 1)]
     offset_step = max(15.0, 2.5 * float(np.ptp(averages[0]))) if len(averages) else 15.0
 
     fig = plt.figure(figsize=(16, 8), constrained_layout=True)
@@ -67,15 +67,15 @@ def save_ver_report(
             color=color,
         )
         ax1.text(float(epoch_time_ms[0]) - 10.0, offset, label, color=color, ha="right", va="center", fontsize=8)
-        y_ticks.append((offset, f"S{idx}"))
+        y_ticks.append((offset, f"M{idx}"))
         session_min = float(np.min(shifted))
         session_max = float(np.max(shifted))
         y_min = session_min if y_min is None else min(y_min, session_min)
         y_max = session_max if y_max is None else max(y_max, session_max)
-    ax1.set_xlim(float(epoch_time_ms[0]), float(epoch_time_ms[-1]))
-    ax1.set_title("VER Evolution — Session by Session")
+    ax1.set_xlim(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"])
+    ax1.set_title("VER Evolution — Minute by Minute")
     ax1.set_xlabel("Time (ms)")
-    ax1.set_ylabel("Session")
+    ax1.set_ylabel("Minute")
     ax1.grid(True, axis="x", alpha=0.3)
     ax1.set_yticks([tick for tick, _ in y_ticks])
     ax1.set_yticklabels([label for _, label in y_ticks])
@@ -83,42 +83,40 @@ def save_ver_report(
         margin = offset_step * 0.6
         ax1.set_ylim(y_min - margin, y_max + margin)
 
-    # Row 2: Wavelet scalograms side by side
+    # Row 2: Wavelet scalograms sequentially in one wide panel
     vmin = float(np.min(session_wavelets_arr))
     vmax = float(np.max(session_wavelets_arr))
-    last_im = None
-    wavelet_gs = gs[1, 0].subgridspec(1, len(session_wavelets), wspace=0.05)
-    wavelet_axes = []
-    for i, (power, label) in enumerate(zip(session_wavelets, labels)):
-        ax = fig.add_subplot(wavelet_gs[0, i])
-        last_im = ax.imshow(
-            power,
-            extent=[float(epoch_time_ms[0]), float(epoch_time_ms[-1]), freq_min, freq_max],
-            origin="lower",
-            aspect="auto",
-            cmap="viridis",
-            vmin=vmin,
-            vmax=vmax,
-        )
-        ax.set_title(label, fontsize=8)
-        ax.set_xlabel("Time (ms)")
-        if i == 0:
-            ax.set_ylabel("Frequency (Hz)")
-        else:
-            ax.set_yticklabels([])
-        wavelet_axes.append(ax)
-    if last_im is not None:
-        fig.colorbar(last_im, ax=wavelet_axes, label="Power", shrink=0.9)
+    ax2 = fig.add_subplot(gs[1, 0])
+    combined_wavelets = np.hstack(session_wavelets)
+    segment_width = float(epoch_time_ms[-1] - epoch_time_ms[0])
+    total_width = segment_width * len(session_wavelets)
+    im = ax2.imshow(
+        combined_wavelets,
+        extent=[0.0, total_width, freq_min, freq_max],
+        origin="lower",
+        aspect="auto",
+        cmap="viridis",
+        vmin=vmin,
+        vmax=vmax,
+    )
+    tick_positions = [(idx + 0.5) * segment_width for idx in range(len(labels))]
+    tick_labels = [f"M{idx + 1}" for idx in range(len(labels))]
+    ax2.set_xticks(tick_positions)
+    ax2.set_xticklabels(tick_labels)
+    for idx in range(1, len(labels)):
+        ax2.axvline(idx * segment_width, color="white", linestyle="--", linewidth=0.6, alpha=0.7)
+    ax2.set_title("Wavelet Scalograms by Minute")
+    ax2.set_xlabel("Minute")
+    ax2.set_ylabel("Frequency (Hz)")
+    fig.colorbar(im, ax=ax2, label="Power", shrink=0.9)
 
     input_path = Path(input_file)
     out_dir = input_path.parent
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     stem = input_path.stem
     png_path = out_dir / f"{stem}_ver_report_{ts}.png"
-    pdf_path = out_dir / f"{stem}_ver_report_{ts}.pdf"
 
     fig.savefig(png_path, dpi=150)
-    fig.savefig(pdf_path)
     plt.close(fig)
 
-    return {"png": str(png_path), "pdf": str(pdf_path)}
+    return {"png": str(png_path)}

@@ -140,7 +140,7 @@ class VERMainWindow(QMainWindow):
         run_layout.addWidget(self.reset_btn)
         run_layout.addWidget(self.save_btn)
 
-        self.progress_label = QLabel("Session 0/10 | Flash 0/120")
+        self.progress_label = QLabel("Minute 0/10 | Flash 0/120")
 
         controls_row.addWidget(file_group)
         controls_row.addWidget(filter_group)
@@ -294,7 +294,7 @@ class VERMainWindow(QMainWindow):
 
     def _set_progress(self, session_number: int, flash_count: int):
         self.progress_label.setText(
-            f"Session {session_number}/{EPOCH_CONFIG['num_sessions']} | Flash {flash_count}/{EPOCH_CONFIG['flashes_per_session']}"
+            f"Minute {session_number}/{EPOCH_CONFIG['num_sessions']} | Flash {flash_count}/{EPOCH_CONFIG['flashes_per_session']}"
         )
 
     def _handle_eof(self):
@@ -310,7 +310,7 @@ class VERMainWindow(QMainWindow):
             resp = QMessageBox.question(
                 self,
                 "End of file",
-                "Reached end of file. Save report for collected sessions?",
+                "Reached end of file. Save report for collected minutes?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.Yes,
             )
@@ -326,7 +326,7 @@ class VERMainWindow(QMainWindow):
         self.session_wavelets.append(power)
         self.session_wavelet_freqs = freqs
 
-        label = f"Session {session_num}"
+        label = f"Minute {session_num}"
         if flash_count is not None and flash_count != EPOCH_CONFIG["flashes_per_session"]:
             label = f"{label} ({flash_count}/{EPOCH_CONFIG['flashes_per_session']})"
         self.session_labels.append(label)
@@ -347,9 +347,9 @@ class VERMainWindow(QMainWindow):
             session_labels=self.session_labels if self.session_labels else None,
         )
         if result is None:
-            QMessageBox.information(self, "No data", "No completed sessions available yet.")
+            QMessageBox.information(self, "No data", "No completed minutes available yet.")
             return
-        QMessageBox.information(self, "Report saved", f"Saved:\n{result['png']}\n{result['pdf']}")
+        QMessageBox.information(self, "Report saved", f"Saved:\n{result['png']}")
 
     def closeEvent(self, event):
         self._shutdown_worker()

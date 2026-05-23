@@ -45,8 +45,8 @@ class VERDisplayWidget(QWidget):
         self.plot_sessions.clear()
         self.plot_sessions.showGrid(x=True, y=False, alpha=0.3)
         self.plot_sessions.setLabel("bottom", "Time", "ms")
-        self.plot_sessions.setLabel("left", "Session")
-        self.plot_sessions.setTitle("VER Evolution — Session by Session")
+        self.plot_sessions.setLabel("left", "Minute")
+        self.plot_sessions.setTitle("VER Evolution — Minute by Minute")
         self.plot_sessions.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)
         self.plot_sessions.addLegend()
         self.plot_sessions.getAxis("left").setTicks([[]])
@@ -56,7 +56,10 @@ class VERDisplayWidget(QWidget):
         self._sessions_y_max = None
 
     def _init_panels(self):
-        self.plot_raw = self.graphics.addPlot(row=0, col=0, title="Raw + Filtered EEG")
+        self.plot_sessions = self.graphics.addPlot(row=0, col=0, rowspan=3, title="VER Evolution — Minute by Minute")
+        self._reset_sessions_panel()
+
+        self.plot_raw = self.graphics.addPlot(row=0, col=1, title="Raw + Filtered EEG")
         self.plot_raw.showGrid(x=True, y=True, alpha=0.3)
         self.plot_raw.setLabel("bottom", "Time", "s")
         self.plot_raw.setLabel("left", "Amplitude")
@@ -65,21 +68,23 @@ class VERDisplayWidget(QWidget):
         self.flash_scatter = pg.ScatterPlotItem(size=6, brush=pg.mkBrush(255, 0, 0, 180), pen=pg.mkPen(None))
         self.plot_raw.addItem(self.flash_scatter)
 
-        self.plot_scope = self.graphics.addPlot(row=1, col=0, title="Scope View")
+        self.plot_scope = self.graphics.addPlot(row=1, col=1, title="Scope View")
         self.plot_scope.showGrid(x=True, y=True, alpha=0.3)
         self.plot_scope.setLabel("bottom", "Time", "ms")
         self.plot_scope.setLabel("left", "Amplitude")
+        self.plot_scope.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)
         self.scope_avg_curve = self.plot_scope.plot(pen=pg.mkPen((255, 200, 0), width=3))
         self.scope_overlay_curves: List[pg.PlotCurveItem] = []
 
-        self.plot_wavelet = self.graphics.addPlot(row=2, col=0, title="Wavelet Scalogram")
+        self.plot_wavelet = self.graphics.addPlot(row=2, col=1, title="Wavelet Scalogram")
         self.plot_wavelet.setLabel("bottom", "Time", "ms")
         self.plot_wavelet.setLabel("left", "Frequency", "Hz")
+        self.plot_wavelet.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)
         self.wavelet_image = pg.ImageItem()
         self.plot_wavelet.addItem(self.wavelet_image)
 
-        self.plot_sessions = self.graphics.addPlot(row=3, col=0, title="VER Evolution — Session by Session")
-        self._reset_sessions_panel()
+        self.graphics.ci.layout.setColumnStretchFactor(0, 3)
+        self.graphics.ci.layout.setColumnStretchFactor(1, 2)
 
     def set_status(self, text: str) -> None:
         self.status_label.setText(text)
@@ -121,7 +126,7 @@ class VERDisplayWidget(QWidget):
 
         self.scope_avg_curve.setData(epoch_time_ms, running_average)
         self.plot_scope.setTitle(
-            f"Scope View - Flash {flash_count}/{EPOCH_CONFIG['flashes_per_session']} | Session {session_number}/{EPOCH_CONFIG['num_sessions']}"
+            f"Scope View - Flash {flash_count}/{EPOCH_CONFIG['flashes_per_session']} | Minute {session_number}/{EPOCH_CONFIG['num_sessions']}"
         )
 
     def clear_scope_panel(self):
@@ -140,7 +145,7 @@ class VERDisplayWidget(QWidget):
         tr.translate(x0, y0)
         tr.scale(dx, dy)
         self.wavelet_image.setTransform(tr)
-        self.plot_wavelet.setTitle(f"Wavelet Scalogram - Session {session_number}")
+        self.plot_wavelet.setTitle(f"Wavelet Scalogram - Minute {session_number}")
 
     def _compute_offset_step(self, session_avg: np.ndarray) -> float:
         if self._offset_step is None:
@@ -158,7 +163,7 @@ class VERDisplayWidget(QWidget):
         offset_step = self._compute_offset_step(session_avg)
         offset = (EPOCH_CONFIG["num_sessions"] - session_number) * offset_step
         color = self.session_colors[(session_number - 1) % len(self.session_colors)]
-        short_label = f"S{session_number}"
+        short_label = f"M{session_number}"
         label_text = session_label or short_label
 
         ref_line = pg.InfiniteLine(
