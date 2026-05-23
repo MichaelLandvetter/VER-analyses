@@ -58,7 +58,7 @@ def save_ver_report(
             avg,
             linewidth=1.2,
             alpha=0.9,
-            color=_MINUTE_COLORS[idx % len(_MINUTE_COLORS)],
+            color=MINUTE_COLORS[idx % len(_MINUTE_COLORS)],
         )
         if idx > 0:
             ax1.axvline(x=x_offset, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
