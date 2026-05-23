@@ -47,8 +47,7 @@ class VERDisplayWidget(QWidget):
         self.plot_sessions.setLabel("bottom", "Time", "ms")
         self.plot_sessions.setLabel("left", "Minute")
         self.plot_sessions.setTitle("VER Evolution — Minute by Minute")
-        self.plot_sessions.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)
-        self.plot_sessions.addLegend()
+        self.plot_sessions.setXRange(-100, 400, padding=0)
         self.plot_sessions.getAxis("left").setTicks([[]])
         self._offset_step = None
         self._session_ticks: List[tuple[float, str]] = []
@@ -108,11 +107,17 @@ class VERDisplayWidget(QWidget):
             self.flash_times.append(t)
 
         if self.flash_times:
-            y_max = float(np.max(y_raw)) if len(y_raw) else 1.0
+            if len(y_filt) > 0:
+                filt_max = float(np.max(y_filt))
+                filt_min = float(np.min(y_filt))
+                filt_range = filt_max - filt_min
+                y_dot = filt_max + max(0.1 * filt_range, 0.5)
+            else:
+                y_dot = 1.0
             visible = [ft for ft in self.flash_times if x[0] <= ft <= x[-1]]
             if visible:
                 fx = np.array(visible, dtype=float)
-                fy = np.full(len(visible), y_max, dtype=float)
+                fy = np.full(len(visible), y_dot, dtype=float)
                 self.flash_scatter.setData(x=fx, y=fy)
             else:
                 self.flash_scatter.setData(x=[], y=[])
@@ -176,7 +181,6 @@ class VERDisplayWidget(QWidget):
             epoch_time_ms,
             session_avg + offset,
             pen=pg.mkPen(color, width=2),
-            name=label_text,
         )
         text = pg.TextItem(label_text, color=color, anchor=(1, 0.5))
         text.setPos(float(epoch_time_ms[0]) - 5.0, offset)
