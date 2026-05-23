@@ -7,6 +7,8 @@ from typing import List
 
 import numpy as np
 import pyqtgraph as pg
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QTransform
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from ver_config import ACQ_CONFIG, DISPLAY_CONFIG, EPOCH_CONFIG
@@ -39,6 +41,15 @@ class VERDisplayWidget(QWidget):
 
         self._init_panels()
 
+    def _add_session_boundary_lines(self):
+        for boundary in range(60, 600, 60):
+            line = pg.InfiniteLine(
+                pos=boundary,
+                angle=90,
+                pen=pg.mkPen(color="#888888", style=Qt.PenStyle.DashLine, width=1),
+            )
+            self.plot_sessions.addItem(line)
+
     def _init_panels(self):
         self.plot_raw = self.graphics.addPlot(row=0, col=0, title="Raw + Filtered EEG")
         self.plot_raw.showGrid(x=True, y=True, alpha=0.3)
@@ -62,11 +73,13 @@ class VERDisplayWidget(QWidget):
         self.wavelet_image = pg.ImageItem()
         self.plot_wavelet.addItem(self.wavelet_image)
 
-        self.plot_sessions = self.graphics.addPlot(row=3, col=0, title="Session Averages Overlay")
+        self.plot_sessions = self.graphics.addPlot(row=3, col=0, title="VER Evolution Over 10 Minutes")
         self.plot_sessions.showGrid(x=True, y=True, alpha=0.3)
-        self.plot_sessions.setLabel("bottom", "Time", "ms")
+        self.plot_sessions.setLabel("bottom", "Time", "s")
         self.plot_sessions.setLabel("left", "Amplitude")
         self.plot_sessions.addLegend()
+        self.plot_sessions.setXRange(0, 600)
+        self._add_session_boundary_lines()
 
     def set_status(self, text: str) -> None:
         self.status_label.setText(text)
@@ -119,19 +132,22 @@ class VERDisplayWidget(QWidget):
 
     def update_wavelet_panel(self, power: np.ndarray, freqs: np.ndarray, epoch_time_ms: np.ndarray, session_number: int) -> None:
         self.wavelet_image.setImage(power.T, autoLevels=True)
-        self.wavelet_image.resetTransform()
         x0 = float(epoch_time_ms[0])
         y0 = float(freqs[0])
         dx = float(epoch_time_ms[-1] - epoch_time_ms[0]) / max(1, power.shape[1] - 1)
         dy = float(freqs[-1] - freqs[0]) / max(1, power.shape[0] - 1)
-        self.wavelet_image.setPos(x0, y0)
-        self.wavelet_image.scale(dx, dy)
+        tr = QTransform()
+        tr.translate(x0, y0)
+        tr.scale(dx, dy)
+        self.wavelet_image.setTransform(tr)
         self.plot_wavelet.setTitle(f"Wavelet Scalogram - Session {session_number}")
 
     def add_session_average(self, epoch_time_ms: np.ndarray, session_avg: np.ndarray, session_number: int) -> None:
         color = self.session_colors[(session_number - 1) % len(self.session_colors)]
+        offset_s = (session_number - 1) * 60.0
+        time_s = epoch_time_ms / 1000.0 + offset_s
         self.plot_sessions.plot(
-            epoch_time_ms,
+            time_s,
             session_avg,
             pen=pg.mkPen(color, width=2),
             name=f"Session {session_number}",
@@ -150,3 +166,5 @@ class VERDisplayWidget(QWidget):
         self.wavelet_image.setImage(np.zeros((2, 2)))
         self.plot_sessions.clear()
         self.plot_sessions.addLegend()
+        self.plot_sessions.setXRange(0, 600)
+        self._add_session_boundary_lines()
