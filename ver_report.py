@@ -11,8 +11,10 @@ import numpy as np
 
 from ver_wavelet import compute_wavelet_scalogram
 
-_TRACE_COLOR = "#E07070"
-
+MINUTE_COLORS = [
+    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+    "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+]
 
 def save_ver_report(
     input_file: str,
@@ -56,7 +58,7 @@ def save_ver_report(
             avg,
             linewidth=1.2,
             alpha=0.9,
-            color=_TRACE_COLOR,
+            color=_MINUTE_COLORS[idx % len(_MINUTE_COLORS)],
         )
         if idx > 0:
             ax1.axvline(x=x_offset, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
