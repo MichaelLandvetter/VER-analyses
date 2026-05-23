@@ -9,8 +9,12 @@ from typing import List, Optional
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ver_config import WAVELET_CONFIG
 from ver_wavelet import compute_wavelet_scalogram
+
+_SESSION_COLORS = [
+    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+    "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+]
 
 
 def save_ver_report(
@@ -24,73 +28,67 @@ def save_ver_report(
         return None
 
     averages = np.asarray(session_averages, dtype=float)
-    grand_avg = np.mean(averages, axis=0)
-    grand_sd = np.std(averages, axis=0)
 
     if session_wavelets is None or session_wavelet_freqs is None:
-        session_wavelets = []
+        computed_wavelets = []
+        freqs = None
         for avg in averages:
             power, freqs = compute_wavelet_scalogram(avg)
-            session_wavelets.append(power)
+            computed_wavelets.append(power)
+        session_wavelets = computed_wavelets
         session_wavelet_freqs = freqs
 
-    session_wavelets = np.asarray(session_wavelets)
-    grand_wavelet = np.mean(session_wavelets, axis=0)
+    session_wavelets_arr = np.asarray(session_wavelets)
+    epoch_time_s = epoch_time_ms / 1000.0
+    freq_min = float(session_wavelet_freqs[0])
+    freq_max = float(session_wavelet_freqs[-1])
 
-    fig = plt.figure(figsize=(14, 10), constrained_layout=True)
-    gs = fig.add_gridspec(2, 2)
+    fig = plt.figure(figsize=(16, 8), constrained_layout=True)
+    gs = fig.add_gridspec(2, 1)
 
+    # Row 1: VER averages on 10-minute time axis
     ax1 = fig.add_subplot(gs[0, 0])
     for idx, avg in enumerate(averages, start=1):
-        ax1.plot(epoch_time_ms, avg, linewidth=1.2, label=f"Session {idx}")
-    ax1.set_title("Session VER Averages")
-    ax1.set_xlabel("Time (ms)")
-    ax1.set_ylabel("Amplitude")
-    ax1.legend(fontsize=8, ncol=2)
+        offset_s = (idx - 1) * 60.0
+        ax1.plot(
+            epoch_time_s + offset_s,
+            avg,
+            linewidth=1.2,
+            label=f"Session {idx}",
+            color=_SESSION_COLORS[(idx - 1) % len(_SESSION_COLORS)],
+        )
+    for boundary in range(60, 600, 60):
+        ax1.axvline(x=boundary, color="grey", linestyle="--", linewidth=0.8)
+    ax1.set_xlim(0, 600)
+    ax1.set_title("VER Averages — 10 Minute Recording")
+    ax1.set_xlabel("Time (s)")
+    ax1.set_ylabel("Amplitude (µV)")
+    ax1.legend(fontsize=8, ncol=5)
 
-    ax2 = fig.add_subplot(gs[0, 1])
-    ax2.plot(epoch_time_ms, grand_avg, color="black", linewidth=2, label="Grand Average")
-    ax2.fill_between(epoch_time_ms, grand_avg - grand_sd, grand_avg + grand_sd, color="tab:blue", alpha=0.25, label="±1 SD")
-    ax2.set_title("Grand Average ±1 SD")
-    ax2.set_xlabel("Time (ms)")
-    ax2.set_ylabel("Amplitude")
-    ax2.legend()
-
-    wavelet_grid = gs[1, 0].subgridspec(2, 5)
-    vmin = float(np.min(session_wavelets))
-    vmax = float(np.max(session_wavelets))
-    for i in range(10):
-        ax = fig.add_subplot(wavelet_grid[i // 5, i % 5])
-        if i < len(session_wavelets):
-            im = ax.imshow(
-                session_wavelets[i],
-                extent=[epoch_time_ms[0], epoch_time_ms[-1], session_wavelet_freqs[0], session_wavelet_freqs[-1]],
-                origin="lower",
-                aspect="auto",
-                cmap="viridis",
-                vmin=vmin,
-                vmax=vmax,
-            )
-            ax.set_title(f"S{i+1}", fontsize=9)
-        else:
-            ax.axis("off")
-        if i % 5 == 0:
-            ax.set_ylabel("Hz")
-        if i // 5 == 1:
-            ax.set_xlabel("ms")
-
-    ax4 = fig.add_subplot(gs[1, 1])
-    grand_im = ax4.imshow(
-        grand_wavelet,
-        extent=[epoch_time_ms[0], epoch_time_ms[-1], WAVELET_CONFIG["freq_min"], WAVELET_CONFIG["freq_max"]],
-        origin="lower",
-        aspect="auto",
-        cmap="viridis",
-    )
-    ax4.set_title("Grand Average Wavelet")
-    ax4.set_xlabel("Time (ms)")
-    ax4.set_ylabel("Frequency (Hz)")
-    fig.colorbar(grand_im, ax=ax4, label="Power")
+    # Row 2: Wavelet scalograms on 10-minute time axis
+    ax2 = fig.add_subplot(gs[1, 0])
+    vmin = float(np.min(session_wavelets_arr))
+    vmax = float(np.max(session_wavelets_arr))
+    last_im = None
+    for i, power in enumerate(session_wavelets):
+        offset = i * 60.0
+        last_im = ax2.imshow(
+            power,
+            extent=[offset, offset + 60, freq_min, freq_max],
+            origin="lower",
+            aspect="auto",
+            cmap="viridis",
+            vmin=vmin,
+            vmax=vmax,
+        )
+    for boundary in range(60, 600, 60):
+        ax2.axvline(x=boundary, color="grey", linestyle="--", linewidth=0.8)
+    ax2.set_xlim(0, 600)
+    ax2.set_title("Wavelet Scalograms — 10 Minute Recording")
+    ax2.set_xlabel("Time (s)")
+    ax2.set_ylabel("Frequency (Hz)")
+    if last_im is not None:
+        fig.colorbar(last_im, ax=ax2, label="Power")
 
     input_path = Path(input_file)
     out_dir = input_path.parent
