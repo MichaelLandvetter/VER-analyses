@@ -13,8 +13,8 @@ FILE_CONFIG = {
 }
 
 FILTER_CONFIG = {
-    "lowcut_hz": 13.0,
-    "highcut_hz": 30.0,
+    "lowcut_hz": 12.0,
+    "highcut_hz": 32.0,
     "order": 4,
     "sample_rate": ACQ_CONFIG["sample_rate"],
 }
