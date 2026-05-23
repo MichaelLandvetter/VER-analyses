@@ -59,7 +59,7 @@ All modules reference these names, so format changes are centralized in config.
 
 The final report is saved next to the selected input file and includes:
 
-- minute-by-minute VER averages stacked on the standard -50 to +400 ms time axis,
+- minute-by-minute VER averages arranged sequentially across a wide top panel,
 - individual minute wavelet scalograms shown sequentially in one wide panel,
 - any final partial minute that reaches at least 50% of the required flashes.
 

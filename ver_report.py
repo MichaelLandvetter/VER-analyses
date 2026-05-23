@@ -9,13 +9,9 @@ from typing import List, Optional
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ver_config import EPOCH_CONFIG
 from ver_wavelet import compute_wavelet_scalogram
 
-_SESSION_COLORS = [
-    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
-    "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
-]
+_TRACE_COLOR = "#E07070"
 
 
 def save_ver_report(
@@ -44,52 +40,44 @@ def save_ver_report(
     freq_min = float(session_wavelet_freqs[0])
     freq_max = float(session_wavelet_freqs[-1])
     labels = session_labels or [f"Minute {idx}" for idx in range(1, len(averages) + 1)]
-    offset_step = max(15.0, 2.5 * float(np.ptp(averages[0]))) if len(averages) else 15.0
-
-    fig = plt.figure(figsize=(16, 8), constrained_layout=True)
+    fig = plt.figure(figsize=(18, 10), facecolor="white", constrained_layout=True)
     gs = fig.add_gridspec(2, 1)
 
-    # Row 1: Stacked VER averages on the standard epoch time axis
+    # Row 1: Sequential VER averages on a minute axis
     ax1 = fig.add_subplot(gs[0, 0])
-    y_ticks = []
-    y_min = None
-    y_max = None
-    for idx, (avg, label) in enumerate(zip(averages, labels), start=1):
-        offset = (EPOCH_CONFIG["num_sessions"] - idx) * offset_step
-        color = _SESSION_COLORS[(idx - 1) % len(_SESSION_COLORS)]
-        shifted = avg + offset
-        ax1.axhline(y=offset, color="grey", linestyle="--", linewidth=0.8, alpha=0.8)
+    ax1.set_facecolor("white")
+    epoch_width = float(epoch_time_ms[-1] - epoch_time_ms[0])
+    epoch_start = float(epoch_time_ms[0])
+    for idx, avg in enumerate(averages):
+        x_offset = idx * epoch_width
+        x_plot = epoch_time_ms - epoch_start + x_offset
         ax1.plot(
-            epoch_time_ms,
-            shifted,
-            linewidth=1.8,
-            label=label,
-            color=color,
+            x_plot,
+            avg,
+            linewidth=1.2,
+            alpha=0.9,
+            color=_TRACE_COLOR,
         )
-        ax1.text(float(epoch_time_ms[0]) - 10.0, offset, label, color=color, ha="right", va="center", fontsize=8)
-        y_ticks.append((offset, f"M{idx}"))
-        session_min = float(np.min(shifted))
-        session_max = float(np.max(shifted))
-        y_min = session_min if y_min is None else min(y_min, session_min)
-        y_max = session_max if y_max is None else max(y_max, session_max)
-    ax1.set_xlim(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"])
+        if idx > 0:
+            ax1.axvline(x=x_offset, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
+    total_width = epoch_width * len(averages)
+    tick_positions = [(idx + 0.5) * epoch_width for idx in range(len(averages))]
+    tick_labels = [f"M{idx + 1}" for idx in range(len(averages))]
+    ax1.axhline(y=0, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
+    ax1.set_xlim(0.0, total_width)
+    ax1.set_xticks(tick_positions)
+    ax1.set_xticklabels(tick_labels)
     ax1.set_title("VER Evolution — Minute by Minute")
-    ax1.set_xlabel("Time (ms)")
-    ax1.set_ylabel("Minute")
-    ax1.grid(True, axis="x", alpha=0.3)
-    ax1.set_yticks([tick for tick, _ in y_ticks])
-    ax1.set_yticklabels([label for _, label in y_ticks])
-    if y_min is not None and y_max is not None:
-        margin = offset_step * 0.6
-        ax1.set_ylim(y_min - margin, y_max + margin)
+    ax1.set_xlabel("Minute")
+    ax1.set_ylabel("Amplitude (µV)")
 
     # Row 2: Wavelet scalograms sequentially in one wide panel
     vmin = float(np.min(session_wavelets_arr))
     vmax = float(np.max(session_wavelets_arr))
     ax2 = fig.add_subplot(gs[1, 0])
+    ax2.set_facecolor("white")
     combined_wavelets = np.hstack(session_wavelets)
-    segment_width = float(epoch_time_ms[-1] - epoch_time_ms[0])
-    total_width = segment_width * len(session_wavelets)
+    segment_width = epoch_width
     im = ax2.imshow(
         combined_wavelets,
         extent=[0.0, total_width, freq_min, freq_max],
@@ -99,12 +87,10 @@ def save_ver_report(
         vmin=vmin,
         vmax=vmax,
     )
-    tick_positions = [(idx + 0.5) * segment_width for idx in range(len(labels))]
-    tick_labels = [f"M{idx + 1}" for idx in range(len(labels))]
     ax2.set_xticks(tick_positions)
     ax2.set_xticklabels(tick_labels)
     for idx in range(1, len(labels)):
-        ax2.axvline(idx * segment_width, color="white", linestyle="--", linewidth=0.6, alpha=0.7)
+        ax2.axvline(idx * segment_width, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
     ax2.set_title("Wavelet Scalograms by Minute")
     ax2.set_xlabel("Minute")
     ax2.set_ylabel("Frequency (Hz)")
