@@ -37,7 +37,7 @@ At startup, choose a `.txt` raw data file (for example `RAW_files_combined.txt`)
 - `ver_scope.py`: rising-edge trigger detection, epoch extraction, and running/session averages.
 - `ver_wavelet.py`: CWT/scalogram computation (`pywt.cwt`) for averaged epochs.
 - `ver_display.py`: PyQtGraph live display panels.
-- `ver_report.py`: final Matplotlib summary figure export (PNG and PDF).
+- `ver_report.py`: final Matplotlib summary figure export (PNG).
 - `ver_main.py`: GUI entry point, controls, menu actions, and acquisition thread orchestration.
 
 ## Changing Filter Settings
@@ -59,8 +59,8 @@ All modules reference these names, so format changes are centralized in config.
 
 The final report is saved next to the selected input file and includes:
 
-- session-by-session VER averages stacked on the standard -100 to +400 ms time axis,
-- individual session wavelet scalograms shown side by side,
-- any final partial session that reaches at least 50% of the required flashes.
+- minute-by-minute VER averages stacked on the standard -50 to +400 ms time axis,
+- individual minute wavelet scalograms shown sequentially in one wide panel,
+- any final partial minute that reaches at least 50% of the required flashes.
 
-Files are saved as both PNG and PDF with a timestamp in the filename.
+Files are saved as PNG with a timestamp in the filename.
