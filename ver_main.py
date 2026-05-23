@@ -89,6 +89,7 @@ class VERMainWindow(QMainWindow):
         self.session_wavelets = []
         self.session_wavelet_freqs = None
         self.session_labels = []
+        self._scope_panel_session = None
 
         self.bandpass = BandpassFilter()
         self.scope = VERScopeProcessor(self.bandpass)
@@ -162,8 +163,13 @@ class VERMainWindow(QMainWindow):
         open_action.triggered.connect(lambda: self._select_data_file(initial=False))
         save_action = QAction("Save Report", self)
         save_action.triggered.connect(self.save_report)
+        exit_action = QAction("Exit", self)
+        exit_action.setShortcut("Ctrl+Q")
+        exit_action.triggered.connect(self.close)
         file_menu.addAction(open_action)
         file_menu.addAction(save_action)
+        file_menu.addSeparator()
+        file_menu.addAction(exit_action)
 
         settings_menu = menubar.addMenu("Settings")
         apply_filter_action = QAction("Filter Settings", self)
@@ -247,6 +253,7 @@ class VERMainWindow(QMainWindow):
         self.session_wavelets = []
         self.session_wavelet_freqs = None
         self.session_labels = []
+        self._scope_panel_session = None
         self.display.reset_all()
         self._set_progress(0, 0)
 
@@ -271,6 +278,9 @@ class VERMainWindow(QMainWindow):
         self._set_progress(current_session, scope_result["flash_count"])
 
         if scope_result["epoch_complete"]:
+            if self._scope_panel_session != current_session:
+                self.display.clear_scope_panel()
+                self._scope_panel_session = current_session
             self.display.update_scope_panel(
                 self.scope.epoch_time_ms,
                 scope_result["completed_epoch"],
@@ -283,9 +293,9 @@ class VERMainWindow(QMainWindow):
             session_avg = scope_result["completed_session_average"]
             session_num = scope_result["completed_session_number"]
             self._record_session(session_avg, session_num)
+            self._scope_panel_session = None
 
             if not self.scope.has_completed_all_sessions():
-                self.display.clear_scope_panel()
                 self._set_progress(min(EPOCH_CONFIG["num_sessions"], session_num + 1), 0)
 
             if self.scope.has_completed_all_sessions():

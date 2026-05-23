@@ -56,9 +56,11 @@ class VERDisplayWidget(QWidget):
 
     def _init_panels(self):
         self.plot_sessions = self.graphics.addPlot(row=0, col=0, rowspan=3, title="VER Evolution — Minute by Minute")
+        self.plot_sessions.getViewBox().setMouseEnabled(x=False, y=True)
         self._reset_sessions_panel()
 
         self.plot_raw = self.graphics.addPlot(row=0, col=1, title="Raw + Filtered EEG")
+        self.plot_raw.getViewBox().setMouseEnabled(x=False, y=True)
         self.plot_raw.showGrid(x=True, y=True, alpha=0.3)
         self.plot_raw.setLabel("bottom", "Time", "s")
         self.plot_raw.setLabel("left", "Amplitude")
@@ -68,6 +70,7 @@ class VERDisplayWidget(QWidget):
         self.plot_raw.addItem(self.flash_scatter)
 
         self.plot_scope = self.graphics.addPlot(row=1, col=1, title="Scope View")
+        self.plot_scope.getViewBox().setMouseEnabled(x=False, y=True)
         self.plot_scope.showGrid(x=True, y=True, alpha=0.3)
         self.plot_scope.setLabel("bottom", "Time", "ms")
         self.plot_scope.setLabel("left", "Amplitude")
@@ -76,14 +79,15 @@ class VERDisplayWidget(QWidget):
         self.scope_overlay_curves: List[pg.PlotCurveItem] = []
 
         self.plot_wavelet = self.graphics.addPlot(row=2, col=1, title="Wavelet Scalogram")
+        self.plot_wavelet.getViewBox().setMouseEnabled(x=False, y=True)
         self.plot_wavelet.setLabel("bottom", "Time", "ms")
         self.plot_wavelet.setLabel("left", "Frequency", "Hz")
         self.plot_wavelet.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)
         self.wavelet_image = pg.ImageItem()
         self.plot_wavelet.addItem(self.wavelet_image)
 
-        self.graphics.ci.layout.setColumnStretchFactor(0, 3)
-        self.graphics.ci.layout.setColumnStretchFactor(1, 2)
+        self.graphics.ci.layout.setColumnStretchFactor(0, 1)
+        self.graphics.ci.layout.setColumnStretchFactor(1, 1)
 
     def set_status(self, text: str) -> None:
         self.status_label.setText(text)
