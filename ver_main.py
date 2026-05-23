@@ -293,6 +293,7 @@ class VERMainWindow(QMainWindow):
             session_avg = scope_result["completed_session_average"]
             session_num = scope_result["completed_session_number"]
             self._record_session(session_avg, session_num)
+            self.display.clear_scope_panel()
             self._scope_panel_session = None
 
             if not self.scope.has_completed_all_sessions():
