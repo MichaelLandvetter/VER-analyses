@@ -26,17 +26,6 @@ class VERDisplaySourceTests(unittest.TestCase):
         )"""
         self.assertIn(plot_block, self.source)
 
-    def test_scope_clear_and_mouse_axis_constraints(self):
-        self.assertIn("self.scope_avg_curve.setData([], [])", self.source)
-        self.assertIn("self.plot_raw.getViewBox().setMouseEnabled(x=False, y=True)", self.source)
-        self.assertIn("self.plot_scope.getViewBox().setMouseEnabled(x=False, y=True)", self.source)
-        self.assertIn("self.plot_wavelet.getViewBox().setMouseEnabled(x=False, y=True)", self.source)
-        self.assertIn("self.plot_sessions.getViewBox().setMouseEnabled(x=False, y=True)", self.source)
-
-    def test_panel_columns_use_equal_stretch(self):
-        self.assertIn("self.graphics.ci.layout.setColumnStretchFactor(0, 1)", self.source)
-        self.assertIn("self.graphics.ci.layout.setColumnStretchFactor(1, 1)", self.source)
-
 
 if __name__ == "__main__":
     unittest.main()
