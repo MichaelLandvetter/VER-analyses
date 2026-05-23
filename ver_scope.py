@@ -37,6 +37,33 @@ class VERScopeProcessor:
         self.session_index = 0
         self.running_average = None
 
+    def _active_session_number(self) -> int:
+        return min(self.config["num_sessions"], self.session_index + 1)
+
+    def _finalize_current_session(self) -> dict:
+        session_average = self.running_average.copy()
+        completed_session_number = self.session_index + 1
+        self.session_averages.append(session_average)
+        self.session_index += 1
+        self.session_epochs = []
+        self.running_average = None
+        self.flash_count = 0
+        return {
+            "session_average": session_average,
+            "session_number": completed_session_number,
+        }
+
+    def save_partial_session(self, min_flashes: Optional[int] = None) -> Optional[dict]:
+        required_flashes = self.config["flashes_per_session"]
+        threshold = required_flashes // 2 if min_flashes is None else int(min_flashes)
+        if self.running_average is None or self.flash_count < threshold:
+            return None
+
+        partial_flash_count = self.flash_count
+        partial_session = self._finalize_current_session()
+        partial_session["flash_count"] = partial_flash_count
+        return partial_session
+
     def process_sample(self, trigger_value: float, eeg_sample: float) -> dict:
         result = {
             "trigger_detected": False,
@@ -47,6 +74,8 @@ class VERScopeProcessor:
             "completed_session_average": None,
             "flash_count": self.flash_count,
             "session_index": self.session_index,
+            "session_number": self._active_session_number(),
+            "completed_session_number": None,
         }
 
         for pending in list(self.pending_epochs):
@@ -72,18 +101,15 @@ class VERScopeProcessor:
                 self.pending_epochs.remove(pending)
 
                 if self.flash_count >= self.config["flashes_per_session"]:
-                    self.session_averages.append(self.running_average.copy())
-                    self.session_index += 1
+                    completed_session = self._finalize_current_session()
                     result.update(
                         {
                             "session_complete": True,
-                            "completed_session_average": self.running_average.copy(),
+                            "completed_session_average": completed_session["session_average"],
                             "session_index": self.session_index,
+                            "completed_session_number": completed_session["session_number"],
                         }
                     )
-                    self.session_epochs = []
-                    self.running_average = None
-                    self.flash_count = 0
 
         rising_edge = float(trigger_value) > 0 and self.prev_trigger <= 0
         if rising_edge:

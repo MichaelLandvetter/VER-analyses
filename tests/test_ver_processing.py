@@ -8,6 +8,13 @@ from ver_wavelet import compute_wavelet_scalogram
 
 
 class VERProcessingTests(unittest.TestCase):
+    @staticmethod
+    def _process_signal(scope, trigger, signal):
+        results = []
+        for tr, eeg in zip(trigger, signal):
+            results.append(scope.process_sample(tr, eeg))
+        return results
+
     def test_rising_edge_detection_counts_once_per_pulse(self):
         bp = BandpassFilter()
         scope = VERScopeProcessor(
@@ -33,6 +40,62 @@ class VERProcessingTests(unittest.TestCase):
 
         self.assertEqual(total_triggers, 2)
         self.assertEqual(len(scope.session_averages), 1)
+
+    def test_completed_session_number_matches_finished_session(self):
+        bp = BandpassFilter()
+        scope = VERScopeProcessor(
+            bp,
+            epoch_config={
+                "pre_stim_ms": 20,
+                "post_stim_ms": 40,
+                "flashes_per_session": 2,
+                "num_sessions": 2,
+            },
+        )
+
+        signal = np.sin(np.linspace(0, 20, 260))
+        trigger = np.zeros(260)
+        trigger[40:45] = 1
+        trigger[120:125] = 1
+        trigger[200:205] = 1
+
+        results = self._process_signal(scope, trigger, signal)
+        completed = [result for result in results if result["session_complete"]]
+        self.assertEqual(len(completed), 1)
+        self.assertEqual(completed[0]["completed_session_number"], 1)
+        self.assertEqual(completed[0]["session_number"], 1)
+
+        third_epoch = next(result for result in results if result["epoch_complete"] and result["flash_count"] == 1 and result["session_number"] == 2)
+        self.assertFalse(third_epoch["session_complete"])
+
+    def test_partial_session_can_be_saved_after_half_the_flashes(self):
+        bp = BandpassFilter()
+        scope = VERScopeProcessor(
+            bp,
+            epoch_config={
+                "pre_stim_ms": 20,
+                "post_stim_ms": 40,
+                "flashes_per_session": 4,
+                "num_sessions": 2,
+            },
+        )
+
+        signal = np.sin(np.linspace(0, 20, 260))
+        trigger = np.zeros(260)
+        trigger[40:45] = 1
+        trigger[120:125] = 1
+        trigger[200:205] = 1
+
+        self._process_signal(scope, trigger, signal)
+        partial = scope.save_partial_session()
+
+        self.assertIsNotNone(partial)
+        self.assertEqual(partial["session_number"], 1)
+        self.assertEqual(partial["flash_count"], 3)
+        self.assertEqual(len(scope.session_averages), 1)
+        self.assertEqual(scope.session_index, 1)
+        self.assertEqual(scope.flash_count, 0)
+        self.assertIsNone(scope.running_average)
 
     def test_wavelet_output_shapes(self):
         epoch = np.sin(2 * np.pi * 10 * np.arange(125) / 250.0)

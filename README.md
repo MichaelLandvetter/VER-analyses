@@ -59,9 +59,8 @@ All modules reference these names, so format changes are centralized in config.
 
 The final report is saved next to the selected input file and includes:
 
-- all session average VER waveforms,
-- grand average with ±1 SD,
-- all session wavelet scalograms,
-- grand-average wavelet scalogram.
+- session-by-session VER averages stacked on the standard -100 to +400 ms time axis,
+- individual session wavelet scalograms shown side by side,
+- any final partial session that reaches at least 50% of the required flashes.
 
 Files are saved as both PNG and PDF with a timestamp in the filename.

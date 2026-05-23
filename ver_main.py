@@ -88,6 +88,7 @@ class VERMainWindow(QMainWindow):
         self.worker_thread = None
         self.session_wavelets = []
         self.session_wavelet_freqs = None
+        self.session_labels = []
 
         self.bandpass = BandpassFilter()
         self.scope = VERScopeProcessor(self.bandpass)
@@ -245,6 +246,7 @@ class VERMainWindow(QMainWindow):
         self.scope = VERScopeProcessor(self.bandpass)
         self.session_wavelets = []
         self.session_wavelet_freqs = None
+        self.session_labels = []
         self.display.reset_all()
         self._set_progress(0, 0)
 
@@ -265,7 +267,7 @@ class VERMainWindow(QMainWindow):
         scope_result = self.scope.process_sample(trigger, eeg)
         self.display.update_scroll_panel(eeg, filtered, scope_result["trigger_detected"])
 
-        current_session = min(EPOCH_CONFIG["num_sessions"], self.scope.session_index + 1)
+        current_session = scope_result["session_number"]
         self._set_progress(current_session, scope_result["flash_count"])
 
         if scope_result["epoch_complete"]:
@@ -279,15 +281,12 @@ class VERMainWindow(QMainWindow):
 
         if scope_result["session_complete"]:
             session_avg = scope_result["completed_session_average"]
-            power, freqs = compute_wavelet_scalogram(session_avg)
-            self.session_wavelets.append(power)
-            self.session_wavelet_freqs = freqs
-            session_num = self.scope.session_index
+            session_num = scope_result["completed_session_number"]
+            self._record_session(session_avg, session_num)
 
-            self.display.update_wavelet_panel(power, freqs, self.scope.epoch_time_ms, session_num)
-            self.display.add_session_average(self.scope.epoch_time_ms, session_avg, session_num)
-            self.display.clear_scope_panel()
-            self._set_progress(min(EPOCH_CONFIG["num_sessions"], self.scope.session_index + 1), 0)
+            if not self.scope.has_completed_all_sessions():
+                self.display.clear_scope_panel()
+                self._set_progress(min(EPOCH_CONFIG["num_sessions"], session_num + 1), 0)
 
             if self.scope.has_completed_all_sessions():
                 self.stop_acquisition()
@@ -300,6 +299,13 @@ class VERMainWindow(QMainWindow):
 
     def _handle_eof(self):
         self.stop_acquisition()
+        partial_session = self.scope.save_partial_session(EPOCH_CONFIG["flashes_per_session"] // 2)
+        if partial_session is not None:
+            self._record_session(
+                partial_session["session_average"],
+                partial_session["session_number"],
+                flash_count=partial_session["flash_count"],
+            )
         if self.scope.session_averages:
             resp = QMessageBox.question(
                 self,
@@ -315,6 +321,19 @@ class VERMainWindow(QMainWindow):
     def _handle_worker_error(self, message: str):
         QMessageBox.critical(self, "Acquisition error", message)
 
+    def _record_session(self, session_avg: np.ndarray, session_num: int, flash_count: int | None = None):
+        power, freqs = compute_wavelet_scalogram(session_avg)
+        self.session_wavelets.append(power)
+        self.session_wavelet_freqs = freqs
+
+        label = f"Session {session_num}"
+        if flash_count is not None and flash_count != EPOCH_CONFIG["flashes_per_session"]:
+            label = f"{label} ({flash_count}/{EPOCH_CONFIG['flashes_per_session']})"
+        self.session_labels.append(label)
+
+        self.display.update_wavelet_panel(power, freqs, self.scope.epoch_time_ms, session_num)
+        self.display.add_session_average(self.scope.epoch_time_ms, session_avg, session_num, session_label=label)
+
     def save_report(self):
         if not self.data_file:
             QMessageBox.warning(self, "No file", "Please select a data file first.")
@@ -325,6 +344,7 @@ class VERMainWindow(QMainWindow):
             self.scope.epoch_time_ms,
             session_wavelets=self.session_wavelets if self.session_wavelets else None,
             session_wavelet_freqs=self.session_wavelet_freqs,
+            session_labels=self.session_labels if self.session_labels else None,
         )
         if result is None:
             QMessageBox.information(self, "No data", "No completed sessions available yet.")

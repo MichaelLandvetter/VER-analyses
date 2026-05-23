@@ -41,14 +41,19 @@ class VERDisplayWidget(QWidget):
 
         self._init_panels()
 
-    def _add_session_boundary_lines(self):
-        for boundary in range(60, 600, 60):
-            line = pg.InfiniteLine(
-                pos=boundary,
-                angle=90,
-                pen=pg.mkPen(color="#888888", style=Qt.PenStyle.DashLine, width=1),
-            )
-            self.plot_sessions.addItem(line)
+    def _reset_sessions_panel(self) -> None:
+        self.plot_sessions.clear()
+        self.plot_sessions.showGrid(x=True, y=False, alpha=0.3)
+        self.plot_sessions.setLabel("bottom", "Time", "ms")
+        self.plot_sessions.setLabel("left", "Session")
+        self.plot_sessions.setTitle("VER Evolution — Session by Session")
+        self.plot_sessions.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)
+        self.plot_sessions.addLegend()
+        self.plot_sessions.getAxis("left").setTicks([[]])
+        self._offset_step = None
+        self._session_ticks: List[tuple[float, str]] = []
+        self._sessions_y_min = None
+        self._sessions_y_max = None
 
     def _init_panels(self):
         self.plot_raw = self.graphics.addPlot(row=0, col=0, title="Raw + Filtered EEG")
@@ -73,13 +78,8 @@ class VERDisplayWidget(QWidget):
         self.wavelet_image = pg.ImageItem()
         self.plot_wavelet.addItem(self.wavelet_image)
 
-        self.plot_sessions = self.graphics.addPlot(row=3, col=0, title="VER Evolution Over 10 Minutes")
-        self.plot_sessions.showGrid(x=True, y=True, alpha=0.3)
-        self.plot_sessions.setLabel("bottom", "Time", "s")
-        self.plot_sessions.setLabel("left", "Amplitude")
-        self.plot_sessions.addLegend()
-        self.plot_sessions.setXRange(0, 600)
-        self._add_session_boundary_lines()
+        self.plot_sessions = self.graphics.addPlot(row=3, col=0, title="VER Evolution — Session by Session")
+        self._reset_sessions_panel()
 
     def set_status(self, text: str) -> None:
         self.status_label.setText(text)
@@ -142,16 +142,51 @@ class VERDisplayWidget(QWidget):
         self.wavelet_image.setTransform(tr)
         self.plot_wavelet.setTitle(f"Wavelet Scalogram - Session {session_number}")
 
-    def add_session_average(self, epoch_time_ms: np.ndarray, session_avg: np.ndarray, session_number: int) -> None:
+    def _compute_offset_step(self, session_avg: np.ndarray) -> float:
+        if self._offset_step is None:
+            peak_to_peak = float(np.ptp(session_avg)) if len(session_avg) else 0.0
+            self._offset_step = max(15.0, 2.5 * peak_to_peak)
+        return self._offset_step
+
+    def add_session_average(
+        self,
+        epoch_time_ms: np.ndarray,
+        session_avg: np.ndarray,
+        session_number: int,
+        session_label: str | None = None,
+    ) -> None:
+        offset_step = self._compute_offset_step(session_avg)
+        offset = (EPOCH_CONFIG["num_sessions"] - session_number) * offset_step
         color = self.session_colors[(session_number - 1) % len(self.session_colors)]
-        offset_s = (session_number - 1) * 60.0
-        time_s = epoch_time_ms / 1000.0 + offset_s
-        self.plot_sessions.plot(
-            time_s,
-            session_avg,
-            pen=pg.mkPen(color, width=2),
-            name=f"Session {session_number}",
+        short_label = f"S{session_number}"
+        label_text = session_label or short_label
+
+        ref_line = pg.InfiniteLine(
+            pos=offset,
+            angle=0,
+            pen=pg.mkPen((80, 80, 80), style=Qt.PenStyle.DashLine),
         )
+        self.plot_sessions.addItem(ref_line)
+        self.plot_sessions.plot(
+            epoch_time_ms,
+            session_avg + offset,
+            pen=pg.mkPen(color, width=2),
+            name=label_text,
+        )
+        text = pg.TextItem(label_text, color=color, anchor=(1, 0.5))
+        text.setPos(float(epoch_time_ms[0]) - 5.0, offset)
+        self.plot_sessions.addItem(text)
+
+        self._session_ticks.append((offset, short_label))
+        self.plot_sessions.getAxis("left").setTicks([sorted(self._session_ticks, key=lambda tick: tick[0])])
+
+        shifted = session_avg + offset
+        session_min = float(np.min(shifted))
+        session_max = float(np.max(shifted))
+        self._sessions_y_min = session_min if self._sessions_y_min is None else min(self._sessions_y_min, session_min)
+        self._sessions_y_max = session_max if self._sessions_y_max is None else max(self._sessions_y_max, session_max)
+        margin = offset_step * 0.6
+        self.plot_sessions.setYRange(self._sessions_y_min - margin, self._sessions_y_max + margin, padding=0)
 
     def reset_all(self):
         self.raw_buffer.clear()
@@ -164,7 +199,4 @@ class VERDisplayWidget(QWidget):
         self.flash_scatter.setData(x=[], y=[])
         self.clear_scope_panel()
         self.wavelet_image.setImage(np.zeros((2, 2)))
-        self.plot_sessions.clear()
-        self.plot_sessions.addLegend()
-        self.plot_sessions.setXRange(0, 600)
-        self._add_session_boundary_lines()
+        self._reset_sessions_panel()
