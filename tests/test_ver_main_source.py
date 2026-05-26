@@ -14,10 +14,13 @@ class VERMainSourceTests(unittest.TestCase):
         self.assertIn("def _on_format_changed(self, format_name: str):", self.source)
         self.assertIn("FILE_CONFIG.update(FILE_FORMATS[format_name])", self.source)
 
-    def test_fast_mode_checkbox_is_wired_to_simulate_realtime(self):
-        self.assertIn('self.fast_mode_check = QCheckBox("Fast mode")', self.source)
-        self.assertIn("simulate_rt = not self.fast_mode_check.isChecked()", self.source)
-        self.assertIn("self._start_worker(simulate_realtime=simulate_rt)", self.source)
+    def test_speed_selector_combo_is_wired_to_speed_factor(self):
+        self.assertIn('self.speed_combo = QComboBox()', self.source)
+        self.assertIn('"Real-time (1×)"', self.source)
+        self.assertIn('"Fast (10×)"', self.source)
+        self.assertIn('"Maximum speed"', self.source)
+        self.assertIn("def _get_speed_factor(self)", self.source)
+        self.assertIn("speed_factor", self.source)
 
     def test_wavelet_stats_are_computed_and_sent_to_display(self):
         self.assertIn("peak_idx = np.unravel_index(np.argmax(power), power.shape)", self.source)

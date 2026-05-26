@@ -14,12 +14,11 @@ from ver_config import ACQ_CONFIG, FILE_CONFIG
 class FileAcquisitionSimulator:
     """Replay a raw text file sample-by-sample."""
 
-    def __init__(self, file_path: str, sample_rate: Optional[float] = None, simulate_realtime: Optional[bool] = None):
+    def __init__(self, file_path: str, sample_rate: Optional[float] = None, speed_factor: Optional[float] = 1.0):
         self.file_path = Path(file_path)
         self.sample_rate = sample_rate if sample_rate is not None else ACQ_CONFIG["sample_rate"]
-        self.simulate_realtime = (
-            simulate_realtime if simulate_realtime is not None else ACQ_CONFIG["simulate_realtime"]
-        )
+        # speed_factor=1.0 → real-time, 10.0 → 10× faster, None → maximum speed (no sleep)
+        self.speed_factor = speed_factor
 
     def stream_samples(self) -> Generator[np.ndarray, None, None]:
         if not self.file_path.exists():
@@ -35,7 +34,7 @@ class FileAcquisitionSimulator:
         if data.ndim == 1:
             data = data.reshape(1, -1)
 
-        sleep_time = 1.0 / float(self.sample_rate)
+        base_sleep = 1.0 / float(self.sample_rate)
         trigger_column = int(FILE_CONFIG["trigger_column"])
         eeg_column = int(FILE_CONFIG["eeg_column"])
         trigger_mode = str(FILE_CONFIG.get("trigger_mode", "threshold"))
@@ -52,5 +51,5 @@ class FileAcquisitionSimulator:
 
             eeg = float(row[eeg_column])
             yield np.asarray([1.0 if trigger else 0.0, eeg], dtype=float)
-            if self.simulate_realtime:
-                time.sleep(sleep_time)
+            if self.speed_factor is not None and self.speed_factor > 0:
+                time.sleep(base_sleep / self.speed_factor)

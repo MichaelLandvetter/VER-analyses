@@ -8,6 +8,7 @@ from typing import List, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.backends.backend_pdf import PdfPages
 
 from ver_wavelet import compute_wavelet_scalogram
 
@@ -42,6 +43,40 @@ def save_ver_report(
     freq_min = float(session_wavelet_freqs[0])
     freq_max = float(session_wavelet_freqs[-1])
     labels = session_labels or [f"Minute {idx}" for idx in range(1, len(averages) + 1)]
+
+    fig1 = _build_figures_page(averages, epoch_time_ms, session_wavelets, session_wavelets_arr, session_wavelet_freqs, freq_min, freq_max, labels)
+
+    fig2 = _build_stats_table_page(session_wavelets, session_wavelet_freqs, epoch_time_ms, labels)
+
+    input_path = Path(input_file)
+    out_dir = input_path.parent
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stem = input_path.stem
+    png_path = out_dir / f"{stem}_ver_report_{ts}.png"
+    pdf_path = out_dir / f"{stem}_ver_report_{ts}.pdf"
+
+    fig1.savefig(png_path, dpi=150)
+
+    with PdfPages(pdf_path) as pdf:
+        pdf.savefig(fig1, bbox_inches="tight")
+        pdf.savefig(fig2, bbox_inches="tight")
+
+    plt.close(fig1)
+    plt.close(fig2)
+
+    return {"png": str(png_path), "pdf": str(pdf_path)}
+
+
+def _build_figures_page(
+    averages: np.ndarray,
+    epoch_time_ms: np.ndarray,
+    session_wavelets: List[np.ndarray],
+    session_wavelets_arr: np.ndarray,
+    session_wavelet_freqs: np.ndarray,
+    freq_min: float,
+    freq_max: float,
+    labels: List[str],
+) -> plt.Figure:
     fig = plt.figure(figsize=(18, 10), facecolor="white", constrained_layout=True)
     gs = fig.add_gridspec(2, 1)
 
@@ -79,7 +114,6 @@ def save_ver_report(
     ax2 = fig.add_subplot(gs[1, 0])
     ax2.set_facecolor("white")
     combined_wavelets = np.hstack(session_wavelets)
-    segment_width = epoch_width
     im = ax2.imshow(
         combined_wavelets,
         extent=[0.0, total_width, freq_min, freq_max],
@@ -92,28 +126,58 @@ def save_ver_report(
     ax2.set_xticks(tick_positions)
     ax2.set_xticklabels(tick_labels)
     for idx in range(1, len(labels)):
-        ax2.axvline(idx * segment_width, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
+        ax2.axvline(idx * epoch_width, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
     ax2.set_title("Wavelet Scalograms by Minute")
     ax2.set_xlabel("Minute")
     ax2.set_ylabel("Frequency (Hz)")
     fig.colorbar(im, ax=ax2, label="Power", shrink=0.9)
 
-    stats_lines = []
+    return fig
+
+
+def _build_stats_table_page(
+    session_wavelets: List[np.ndarray],
+    session_wavelet_freqs: np.ndarray,
+    epoch_time_ms: np.ndarray,
+    labels: List[str],
+) -> plt.Figure:
+    fig, ax = plt.subplots(figsize=(10, max(4, 1 + 0.5 * len(session_wavelets))), facecolor="white")
+    ax.axis("off")
+    ax.set_title("VER Analysis — Peak Statistics", fontsize=14, fontweight="bold", pad=20)
+
+    col_labels = ["Minute", "Label", "Peak Freq (Hz)", "Peak Latency (ms)", "Peak Power"]
+    rows = []
     for idx, wavelet in enumerate(session_wavelets):
         peak_idx = np.unravel_index(np.argmax(wavelet), wavelet.shape)
         peak_freq = float(session_wavelet_freqs[peak_idx[0]])
         peak_latency_ms = float(epoch_time_ms[peak_idx[1]])
         peak_power = float(wavelet[peak_idx])
-        stats_lines.append(f"M{idx + 1}: {peak_freq:.1f} Hz | {peak_latency_ms:.0f} ms | Power {peak_power:.2f}")
-    fig.text(0.01, 0.01, "   ".join(stats_lines), fontsize=7, color="gray", ha="left", va="bottom", wrap=True)
+        rows.append([
+            str(idx + 1),
+            labels[idx] if idx < len(labels) else f"Minute {idx + 1}",
+            f"{peak_freq:.1f}",
+            f"{peak_latency_ms:.0f}",
+            f"{peak_power:.4f}",
+        ])
 
-    input_path = Path(input_file)
-    out_dir = input_path.parent
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    stem = input_path.stem
-    png_path = out_dir / f"{stem}_ver_report_{ts}.png"
+    table = ax.table(
+        cellText=rows,
+        colLabels=col_labels,
+        loc="center",
+        cellLoc="center",
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(11)
+    table.scale(1.2, 1.8)
 
-    fig.savefig(png_path, dpi=150)
-    plt.close(fig)
+    for (row_idx, col_idx), cell in table.get_celld().items():
+        cell.set_edgecolor("lightgray")
+        if row_idx == 0:
+            cell.set_facecolor("#4472C4")
+            cell.set_text_props(color="white", fontweight="bold")
+        elif row_idx % 2 == 0:
+            cell.set_facecolor("#E9EFF7")
+        else:
+            cell.set_facecolor("white")
 
-    return {"png": str(png_path)}
+    return fig

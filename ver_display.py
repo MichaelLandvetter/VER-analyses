@@ -119,7 +119,12 @@ class VERDisplayWidget(QWidget):
                 filt_max = float(np.max(y_filt))
                 filt_min = float(np.min(y_filt))
                 filt_range = filt_max - filt_min
-                y_dot = filt_max + max(0.1 * filt_range, 0.5)
+                if filt_range > 0:
+                    y_dot = filt_max + 0.1 * filt_range
+                elif filt_max != 0:
+                    y_dot = filt_max + 0.1 * abs(filt_max)
+                else:
+                    y_dot = 1.0
             else:
                 y_dot = 1.0
             visible = [ft for ft in self.flash_times if x[0] <= ft <= x[-1]]
@@ -168,7 +173,10 @@ class VERDisplayWidget(QWidget):
     def _compute_offset_step(self, session_avg: np.ndarray) -> float:
         if self._offset_step is None:
             peak_to_peak = float(np.ptp(session_avg)) if len(session_avg) else 0.0
-            self._offset_step = max(15.0, 2.5 * peak_to_peak)
+            if peak_to_peak > 0:
+                self._offset_step = 2.5 * peak_to_peak
+            else:
+                self._offset_step = 1.0
         return self._offset_step
 
     def add_session_average(

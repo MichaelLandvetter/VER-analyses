@@ -11,7 +11,6 @@ from PyQt6.QtCore import QObject, QThread, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QApplication,
-    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -40,11 +39,11 @@ class AcquisitionWorker(QObject):
     eof_reached = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, file_path: str, sample_rate: float, simulate_realtime: bool):
+    def __init__(self, file_path: str, sample_rate: float, speed_factor: float | None):
         super().__init__()
         self.file_path = file_path
         self.sample_rate = sample_rate
-        self.simulate_realtime = simulate_realtime
+        self.speed_factor = speed_factor
         self._running = False
         self._paused = True
 
@@ -53,7 +52,7 @@ class AcquisitionWorker(QObject):
             simulator = FileAcquisitionSimulator(
                 self.file_path,
                 sample_rate=self.sample_rate,
-                simulate_realtime=self.simulate_realtime,
+                speed_factor=self.speed_factor,
             )
             self._running = True
             for row in simulator.stream_samples():
@@ -139,9 +138,9 @@ class VERMainWindow(QMainWindow):
         self.stop_btn = QPushButton("Stop")
         self.reset_btn = QPushButton("Reset")
         self.save_btn = QPushButton("Save Report")
-        self.fast_mode_check = QCheckBox("Fast mode")
-        self.fast_mode_check.setChecked(not ACQ_CONFIG["simulate_realtime"])
-        self.fast_mode_check.setToolTip("Run replay faster than real-time (ignores sample timing)")
+        self.speed_combo = QComboBox()
+        self.speed_combo.addItems(["Real-time (1×)", "Fast (10×)", "Maximum speed"])
+        self.speed_combo.setToolTip("Replay speed")
         self.start_btn.clicked.connect(self.start_acquisition)
         self.stop_btn.clicked.connect(self.stop_acquisition)
         self.reset_btn.clicked.connect(self.reset_all)
@@ -150,7 +149,7 @@ class VERMainWindow(QMainWindow):
         run_layout.addWidget(self.stop_btn)
         run_layout.addWidget(self.reset_btn)
         run_layout.addWidget(self.save_btn)
-        run_layout.addWidget(self.fast_mode_check)
+        run_layout.addWidget(self.speed_combo)
 
         self.progress_label = QLabel("Minute 0/10 | Flash 0/120")
 
@@ -207,6 +206,8 @@ class VERMainWindow(QMainWindow):
             self.data_file = selected
             self.file_label.setText(f"Selected: {Path(selected).name}")
             self.display.set_status(f"Loaded file: {Path(selected).name}")
+            if not initial:
+                self.reset_all()
             if self.worker is not None:
                 self._restart_worker_with_file()
         elif initial:
@@ -218,17 +219,19 @@ class VERMainWindow(QMainWindow):
 
     def _restart_worker_with_file(self):
         self._shutdown_worker()
-        self._start_worker(simulate_realtime=not self.fast_mode_check.isChecked())
+        self._start_worker(self._get_speed_factor())
 
-    def _start_worker(self, simulate_realtime: bool | None = None):
+    def _get_speed_factor(self) -> float | None:
+        speed_map = {"Real-time (1×)": 1.0, "Fast (10×)": 10.0, "Maximum speed": None}
+        return speed_map.get(self.speed_combo.currentText(), 1.0)
+
+    def _start_worker(self, speed_factor: float | None = 1.0):
         if not self.data_file:
             QMessageBox.warning(self, "No file", "Please select a data file first.")
             return
-        if simulate_realtime is None:
-            simulate_realtime = ACQ_CONFIG["simulate_realtime"]
 
         self.worker_thread = QThread(self)
-        self.worker = AcquisitionWorker(self.data_file, ACQ_CONFIG["sample_rate"], simulate_realtime)
+        self.worker = AcquisitionWorker(self.data_file, ACQ_CONFIG["sample_rate"], speed_factor)
         self.worker.moveToThread(self.worker_thread)
 
         self.worker_thread.started.connect(self.worker.run)
@@ -248,8 +251,16 @@ class VERMainWindow(QMainWindow):
 
     def start_acquisition(self):
         if self.worker is None:
-            simulate_rt = not self.fast_mode_check.isChecked()
-            self._start_worker(simulate_realtime=simulate_rt)
+            if self.scope.flash_count > 0 or self.scope.session_averages:
+                resp = QMessageBox.question(
+                    self, "Reset?",
+                    "There is data from a previous run. Reset before starting?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
+                )
+                if resp == QMessageBox.StandardButton.Yes:
+                    self.reset_all()
+            self._start_worker(self._get_speed_factor())
         if self.worker is not None:
             self.worker.start_stream()
 
@@ -393,7 +404,10 @@ class VERMainWindow(QMainWindow):
         if result is None:
             QMessageBox.information(self, "No data", "No completed minutes available yet.")
             return
-        QMessageBox.information(self, "Report saved", f"Saved:\n{result['png']}")
+        msg = f"Saved:\n{result['png']}"
+        if "pdf" in result:
+            msg += f"\n{result['pdf']}"
+        QMessageBox.information(self, "Report saved", msg)
 
     def closeEvent(self, event):
         self._shutdown_worker()

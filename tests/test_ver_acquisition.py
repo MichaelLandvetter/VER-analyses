@@ -21,7 +21,7 @@ class FileAcquisitionSimulatorTests(unittest.TestCase):
 
             FILE_CONFIG.clear()
             FILE_CONFIG.update(FILE_FORMATS["SD-card"])
-            samples = list(FileAcquisitionSimulator(str(data_file), simulate_realtime=False).stream_samples())
+            samples = list(FileAcquisitionSimulator(str(data_file), speed_factor=None).stream_samples())
 
             self.assertEqual(samples[0][0], 0.0)
             self.assertEqual(samples[0][1], 1.5)
@@ -35,7 +35,7 @@ class FileAcquisitionSimulatorTests(unittest.TestCase):
 
             FILE_CONFIG.clear()
             FILE_CONFIG.update(FILE_FORMATS["LabChart"])
-            samples = list(FileAcquisitionSimulator(str(data_file), simulate_realtime=False).stream_samples())
+            samples = list(FileAcquisitionSimulator(str(data_file), speed_factor=None).stream_samples())
 
             self.assertEqual(samples[0][0], 0.0)
             self.assertAlmostEqual(samples[0][1], 0.02)
