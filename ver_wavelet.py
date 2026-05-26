@@ -24,6 +24,13 @@ def compute_wavelet_scalogram(epoch: np.ndarray, sample_rate: Optional[float] = 
 
     coeffs, _ = pywt.cwt(data, scales, cfg["wavelet"], sampling_period=1.0 / fs)
     power = np.abs(coeffs) ** 2
+
+    # Normalise power to 0–1 so values are comparable across file types
+    # (SD-card amplitudes ~10 units vs LabChart ~0.02 units)
+    power_max = np.max(power)
+    if power_max > 0:
+        power = power / power_max
+
     return power, freqs
 
 

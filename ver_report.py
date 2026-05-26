@@ -24,6 +24,7 @@ def save_ver_report(
     session_wavelets: Optional[List[np.ndarray]] = None,
     session_wavelet_freqs: Optional[np.ndarray] = None,
     session_labels: Optional[List[str]] = None,
+    session_ver_peaks: Optional[List[dict]] = None,
 ) -> Optional[dict]:
     if not session_averages:
         return None
@@ -46,7 +47,7 @@ def save_ver_report(
 
     fig1 = _build_figures_page(averages, epoch_time_ms, session_wavelets, session_wavelets_arr, session_wavelet_freqs, freq_min, freq_max, labels)
 
-    fig2 = _build_stats_table_page(session_wavelets, session_wavelet_freqs, epoch_time_ms, labels)
+    fig2 = _build_stats_table_page(session_wavelets, session_wavelet_freqs, epoch_time_ms, labels, session_ver_peaks)
 
     input_path = Path(input_file)
     out_dir = input_path.parent
@@ -140,21 +141,45 @@ def _build_stats_table_page(
     session_wavelet_freqs: np.ndarray,
     epoch_time_ms: np.ndarray,
     labels: List[str],
+    session_ver_peaks: Optional[List[dict]] = None,
 ) -> plt.Figure:
-    fig, ax = plt.subplots(figsize=(10, max(4, 1 + 0.5 * len(session_wavelets))), facecolor="white")
+    fig, ax = plt.subplots(figsize=(18, max(4, 1 + 0.5 * len(session_wavelets))), facecolor="white")
     ax.axis("off")
     ax.set_title("VER Analysis — Peak Statistics", fontsize=14, fontweight="bold", pad=20)
 
-    col_labels = ["Minute", "Label", "Peak Freq (Hz)", "Peak Latency (ms)", "Peak Power"]
+    col_labels = [
+        "Minute", "Label",
+        "N75 Latency (ms)", "N75 Amp",
+        "P100 Latency (ms)", "P100 Amp",
+        "N135 Latency (ms)", "N135 Amp",
+        "Peak Freq (Hz)", "Peak Latency (ms)", "Peak Power",
+    ]
     rows = []
     for idx, wavelet in enumerate(session_wavelets):
         peak_idx = np.unravel_index(np.argmax(wavelet), wavelet.shape)
         peak_freq = float(session_wavelet_freqs[peak_idx[0]])
         peak_latency_ms = float(epoch_time_ms[peak_idx[1]])
         peak_power = float(wavelet[peak_idx])
+
+        def _fmt_peak(peaks, key):
+            if peaks is None:
+                return "\u2014", "\u2014"
+            p = peaks.get(key, {})
+            if p.get('found'):
+                return f"{p['latency_ms']:.0f}", f"{p['amplitude']:.4f}"
+            return "\u2014", "\u2014"
+
+        ver_peaks = session_ver_peaks[idx] if session_ver_peaks and idx < len(session_ver_peaks) else None
+        n75_lat, n75_amp = _fmt_peak(ver_peaks, 'N75')
+        p100_lat, p100_amp = _fmt_peak(ver_peaks, 'P100')
+        n135_lat, n135_amp = _fmt_peak(ver_peaks, 'N135')
+
         rows.append([
             str(idx + 1),
             labels[idx] if idx < len(labels) else f"Minute {idx + 1}",
+            n75_lat, n75_amp,
+            p100_lat, p100_amp,
+            n135_lat, n135_amp,
             f"{peak_freq:.1f}",
             f"{peak_latency_ms:.0f}",
             f"{peak_power:.4f}",
@@ -167,8 +192,8 @@ def _build_stats_table_page(
         cellLoc="center",
     )
     table.auto_set_font_size(False)
-    table.set_fontsize(11)
-    table.scale(1.2, 1.8)
+    table.set_fontsize(9)
+    table.scale(1.0, 1.8)
 
     for (row_idx, col_idx), cell in table.get_celld().items():
         cell.set_edgecolor("lightgray")

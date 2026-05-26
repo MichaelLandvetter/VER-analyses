@@ -29,6 +29,7 @@ from ver_acquisition import FileAcquisitionSimulator
 from ver_config import ACQ_CONFIG, EPOCH_CONFIG, FILE_CONFIG, FILE_FORMATS, FILTER_CONFIG
 from ver_display import VERDisplayWidget
 from ver_filter import BandpassFilter
+from ver_peaks import detect_ver_peaks
 from ver_report import save_ver_report
 from ver_scope import VERScopeProcessor
 from ver_wavelet import compute_wavelet_scalogram
@@ -90,6 +91,7 @@ class VERMainWindow(QMainWindow):
         self.session_wavelets = []
         self.session_wavelet_freqs = None
         self.session_labels = []
+        self.session_ver_peaks = []
         self._scope_panel_session = None
 
         self.bandpass = BandpassFilter()
@@ -279,6 +281,7 @@ class VERMainWindow(QMainWindow):
         self.session_wavelets = []
         self.session_wavelet_freqs = None
         self.session_labels = []
+        self.session_ver_peaks = []
         self._scope_panel_session = None
         self.display.reset_all()
         self._set_progress(0, 0)
@@ -367,13 +370,16 @@ class VERMainWindow(QMainWindow):
         peak_latency_ms = float(self.scope.epoch_time_ms[peak_idx[1]])
         peak_power = float(power[peak_idx])
 
+        ver_peaks = detect_ver_peaks(session_avg, self.scope.epoch_time_ms)
+        self.session_ver_peaks.append(ver_peaks)
+
         label = f"Minute {session_num}"
         if flash_count is not None and flash_count != EPOCH_CONFIG["flashes_per_session"]:
             label = f"{label} ({flash_count}/{EPOCH_CONFIG['flashes_per_session']})"
         self.session_labels.append(label)
 
         self.display.update_wavelet_panel(power, freqs, self.scope.epoch_time_ms, session_num)
-        self.display.update_wavelet_stats(peak_freq, peak_latency_ms, peak_power, session_num)
+        self.display.update_wavelet_stats(peak_freq, peak_latency_ms, peak_power, session_num, ver_peaks=ver_peaks)
         self.display.add_session_average(self.scope.epoch_time_ms, session_avg, session_num, session_label=label)
 
     def _on_format_changed(self, format_name: str):
@@ -400,6 +406,7 @@ class VERMainWindow(QMainWindow):
             session_wavelets=self.session_wavelets if self.session_wavelets else None,
             session_wavelet_freqs=self.session_wavelet_freqs,
             session_labels=self.session_labels if self.session_labels else None,
+            session_ver_peaks=self.session_ver_peaks if self.session_ver_peaks else None,
         )
         if result is None:
             QMessageBox.information(self, "No data", "No completed minutes available yet.")

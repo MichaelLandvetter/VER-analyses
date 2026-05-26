@@ -165,10 +165,16 @@ class VERDisplayWidget(QWidget):
         self.wavelet_image.setTransform(tr)
         self.plot_wavelet.setTitle(f"Wavelet Scalogram - Minute {session_number}")
 
-    def update_wavelet_stats(self, peak_freq: float, peak_latency_ms: float, peak_power: float, session_number: int) -> None:
-        self.wavelet_stats_label.setText(
-            f"M{session_number} — Peak: {peak_freq:.1f} Hz | {peak_latency_ms:.0f} ms | Power: {peak_power:.2f}"
-        )
+    def update_wavelet_stats(self, peak_freq: float, peak_latency_ms: float, peak_power: float, session_number: int, ver_peaks=None) -> None:
+        wavelet_text = f"M{session_number} — Wavelet peak: {peak_freq:.1f} Hz | {peak_latency_ms:.0f} ms | Power: {peak_power:.4f}"
+        if ver_peaks:
+            n75 = ver_peaks['N75']
+            p100 = ver_peaks['P100']
+            n135 = ver_peaks['N135']
+            def fmt(p): return f"{p['latency_ms']:.0f} ms ({p['amplitude']:.4f})" if p['found'] else "\u2014"
+            peaks_text = f"  |  N75: {fmt(n75)}  P100: {fmt(p100)}  N135: {fmt(n135)}"
+            wavelet_text += peaks_text
+        self.wavelet_stats_label.setText(wavelet_text)
 
     def _compute_offset_step(self, session_avg: np.ndarray) -> float:
         if self._offset_step is None:
