@@ -39,6 +39,10 @@ class VERDisplayWidget(QWidget):
         self.graphics = pg.GraphicsLayoutWidget()
         layout.addWidget(self.graphics)
 
+        self.wavelet_stats_label = QLabel("Peak: — Hz | — ms | Power: —")
+        self.wavelet_stats_label.setStyleSheet("color: white; font-size: 11px;")
+        layout.addWidget(self.wavelet_stats_label)
+
         self._init_panels()
 
     def _reset_sessions_panel(self) -> None:
@@ -156,6 +160,11 @@ class VERDisplayWidget(QWidget):
         self.wavelet_image.setTransform(tr)
         self.plot_wavelet.setTitle(f"Wavelet Scalogram - Minute {session_number}")
 
+    def update_wavelet_stats(self, peak_freq: float, peak_latency_ms: float, peak_power: float, session_number: int) -> None:
+        self.wavelet_stats_label.setText(
+            f"M{session_number} — Peak: {peak_freq:.1f} Hz | {peak_latency_ms:.0f} ms | Power: {peak_power:.2f}"
+        )
+
     def _compute_offset_step(self, session_avg: np.ndarray) -> float:
         if self._offset_step is None:
             peak_to_peak = float(np.ptp(session_avg)) if len(session_avg) else 0.0
@@ -212,4 +221,5 @@ class VERDisplayWidget(QWidget):
         self.flash_scatter.setData(x=[], y=[])
         self.clear_scope_panel()
         self.wavelet_image.setImage(np.zeros((2, 2)))
+        self.wavelet_stats_label.setText("Peak: — Hz | — ms | Power: —")
         self._reset_sessions_panel()

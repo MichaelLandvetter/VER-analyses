@@ -11,6 +11,8 @@ from PyQt6.QtCore import QObject, QThread, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QApplication,
+    QCheckBox,
+    QComboBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -25,7 +27,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ver_acquisition import FileAcquisitionSimulator
-from ver_config import ACQ_CONFIG, EPOCH_CONFIG, FILE_CONFIG, FILTER_CONFIG
+from ver_config import ACQ_CONFIG, EPOCH_CONFIG, FILE_CONFIG, FILE_FORMATS, FILTER_CONFIG
 from ver_display import VERDisplayWidget
 from ver_filter import BandpassFilter
 from ver_report import save_ver_report
@@ -111,6 +113,11 @@ class VERMainWindow(QMainWindow):
         open_btn.clicked.connect(lambda: self._select_data_file(initial=False))
         file_layout.addWidget(self.file_label)
         file_layout.addWidget(open_btn)
+        self.format_combo = QComboBox()
+        self.format_combo.addItems(list(FILE_FORMATS.keys()))
+        self.format_combo.currentTextChanged.connect(self._on_format_changed)
+        file_layout.addWidget(QLabel("File format:"))
+        file_layout.addWidget(self.format_combo)
 
         filter_group = QGroupBox("Filter Settings")
         filter_layout = QFormLayout(filter_group)
@@ -132,6 +139,9 @@ class VERMainWindow(QMainWindow):
         self.stop_btn = QPushButton("Stop")
         self.reset_btn = QPushButton("Reset")
         self.save_btn = QPushButton("Save Report")
+        self.fast_mode_check = QCheckBox("Fast mode")
+        self.fast_mode_check.setChecked(not ACQ_CONFIG["simulate_realtime"])
+        self.fast_mode_check.setToolTip("Run replay faster than real-time (ignores sample timing)")
         self.start_btn.clicked.connect(self.start_acquisition)
         self.stop_btn.clicked.connect(self.stop_acquisition)
         self.reset_btn.clicked.connect(self.reset_all)
@@ -140,6 +150,7 @@ class VERMainWindow(QMainWindow):
         run_layout.addWidget(self.stop_btn)
         run_layout.addWidget(self.reset_btn)
         run_layout.addWidget(self.save_btn)
+        run_layout.addWidget(self.fast_mode_check)
 
         self.progress_label = QLabel("Minute 0/10 | Flash 0/120")
 
@@ -154,6 +165,7 @@ class VERMainWindow(QMainWindow):
         root.addWidget(self.display)
 
         self.setCentralWidget(central)
+        self._set_current_format()
 
     def _build_menu(self):
         menubar = self.menuBar()
@@ -206,15 +218,17 @@ class VERMainWindow(QMainWindow):
 
     def _restart_worker_with_file(self):
         self._shutdown_worker()
-        self._start_worker()
+        self._start_worker(simulate_realtime=not self.fast_mode_check.isChecked())
 
-    def _start_worker(self):
+    def _start_worker(self, simulate_realtime: bool | None = None):
         if not self.data_file:
             QMessageBox.warning(self, "No file", "Please select a data file first.")
             return
+        if simulate_realtime is None:
+            simulate_realtime = ACQ_CONFIG["simulate_realtime"]
 
         self.worker_thread = QThread(self)
-        self.worker = AcquisitionWorker(self.data_file, ACQ_CONFIG["sample_rate"], ACQ_CONFIG["simulate_realtime"])
+        self.worker = AcquisitionWorker(self.data_file, ACQ_CONFIG["sample_rate"], simulate_realtime)
         self.worker.moveToThread(self.worker_thread)
 
         self.worker_thread.started.connect(self.worker.run)
@@ -234,7 +248,8 @@ class VERMainWindow(QMainWindow):
 
     def start_acquisition(self):
         if self.worker is None:
-            self._start_worker()
+            simulate_rt = not self.fast_mode_check.isChecked()
+            self._start_worker(simulate_realtime=simulate_rt)
         if self.worker is not None:
             self.worker.start_stream()
 
@@ -267,8 +282,8 @@ class VERMainWindow(QMainWindow):
         self.display.set_status(f"Filter updated: {low:.1f}-{high:.1f} Hz")
 
     def _handle_sample(self, row: np.ndarray):
-        trigger = float(row[FILE_CONFIG["trigger_column"]])
-        eeg = float(row[FILE_CONFIG["eeg_column"]])
+        trigger = bool(row[0])
+        eeg = float(row[1])
         filtered = self.bandpass.process_sample(eeg)
 
         scope_result = self.scope.process_sample(trigger, eeg)
@@ -336,6 +351,10 @@ class VERMainWindow(QMainWindow):
         power, freqs = compute_wavelet_scalogram(session_avg)
         self.session_wavelets.append(power)
         self.session_wavelet_freqs = freqs
+        peak_idx = np.unravel_index(np.argmax(power), power.shape)
+        peak_freq = float(freqs[peak_idx[0]])
+        peak_latency_ms = float(self.scope.epoch_time_ms[peak_idx[1]])
+        peak_power = float(power[peak_idx])
 
         label = f"Minute {session_num}"
         if flash_count is not None and flash_count != EPOCH_CONFIG["flashes_per_session"]:
@@ -343,7 +362,21 @@ class VERMainWindow(QMainWindow):
         self.session_labels.append(label)
 
         self.display.update_wavelet_panel(power, freqs, self.scope.epoch_time_ms, session_num)
+        self.display.update_wavelet_stats(peak_freq, peak_latency_ms, peak_power, session_num)
         self.display.add_session_average(self.scope.epoch_time_ms, session_avg, session_num, session_label=label)
+
+    def _on_format_changed(self, format_name: str):
+        FILE_CONFIG.update(FILE_FORMATS[format_name])
+        self.display.set_status(f"File format: {format_name}")
+
+    def _set_current_format(self):
+        current = {key: FILE_CONFIG.get(key) for key in ("delimiter", "trigger_column", "eeg_column", "skip_header", "trigger_mode", "trigger_threshold")}
+        for format_name, cfg in FILE_FORMATS.items():
+            if all(current.get(key) == cfg.get(key) for key in cfg):
+                self.format_combo.setCurrentText(format_name)
+                return
+        default_name = next(iter(FILE_FORMATS))
+        self.format_combo.setCurrentText(default_name)
 
     def save_report(self):
         if not self.data_file:

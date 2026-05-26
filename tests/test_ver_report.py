@@ -72,6 +72,11 @@ class VERReportTests(unittest.TestCase):
             self.assertEqual(ax2.get_title(), "Wavelet Scalograms by Minute")
             self.assertEqual([tick.get_text() for tick in ax2.get_xticklabels()], ["M1", "M2"])
             self.assertEqual(colorbar_ax.get_ylabel(), "Power")
+            self.assertGreater(len(fig.texts), 0)
+            stats_text = fig.texts[0].get_text()
+            self.assertIn("M1:", stats_text)
+            self.assertIn("Hz |", stats_text)
+            self.assertIn("Power", stats_text)
 
 
 if __name__ == "__main__":

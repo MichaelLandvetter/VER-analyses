@@ -10,6 +10,27 @@ FILE_CONFIG = {
     "trigger_column": 0,
     "eeg_column": 2,
     "skip_header": 0,
+    "trigger_mode": "threshold",
+    "trigger_threshold": 0.5,
+}
+
+FILE_FORMATS = {
+    "SD-card": {
+        "delimiter": "\t",
+        "trigger_column": 0,
+        "eeg_column": 2,
+        "skip_header": 0,
+        "trigger_mode": "threshold",
+        "trigger_threshold": 0.5,
+    },
+    "LabChart": {
+        "delimiter": "\t",
+        "trigger_column": 0,
+        "eeg_column": 1,
+        "skip_header": 0,
+        "trigger_mode": "interval",
+        "trigger_threshold": 0.1,
+    },
 }
 
 FILTER_CONFIG = {

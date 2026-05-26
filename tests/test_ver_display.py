@@ -26,6 +26,13 @@ class VERDisplaySourceTests(unittest.TestCase):
         )"""
         self.assertIn(plot_block, self.source)
 
+    def test_wavelet_stats_label_and_update_method_exist(self):
+        self.assertIn('self.wavelet_stats_label = QLabel("Peak: — Hz | — ms | Power: —")', self.source)
+        self.assertIn(
+            'f"M{session_number} — Peak: {peak_freq:.1f} Hz | {peak_latency_ms:.0f} ms | Power: {peak_power:.2f}"',
+            self.source,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
