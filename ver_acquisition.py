@@ -36,7 +36,21 @@ class FileAcquisitionSimulator:
             data = data.reshape(1, -1)
 
         sleep_time = 1.0 / float(self.sample_rate)
+        trigger_column = int(FILE_CONFIG["trigger_column"])
+        eeg_column = int(FILE_CONFIG["eeg_column"])
+        trigger_mode = str(FILE_CONFIG.get("trigger_mode", "threshold"))
+        trigger_threshold = float(FILE_CONFIG.get("trigger_threshold", 0.5))
+
         for row in data:
-            yield row
+            trigger_value = float(row[trigger_column])
+            if trigger_mode == "threshold":
+                trigger = trigger_value > trigger_threshold
+            elif trigger_mode == "interval":
+                trigger = trigger_value > trigger_threshold
+            else:
+                raise ValueError(f"Unsupported trigger mode: {trigger_mode}")
+
+            eeg = float(row[eeg_column])
+            yield np.asarray([1.0 if trigger else 0.0, eeg], dtype=float)
             if self.simulate_realtime:
                 time.sleep(sleep_time)

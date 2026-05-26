@@ -44,16 +44,19 @@ At startup, choose a `.txt` raw data file (for example `RAW_files_combined.txt`)
 
 Use the GUI filter controls (Low cut, High cut, **Apply Filter**) to redesign the filter on the fly without resetting accumulated sessions.
 
-## Changing Data File Column Layout
+## Data File Formats
 
-Edit `FILE_CONFIG` in `ver_config.py`:
+Use the **File format** dropdown in the GUI to switch between:
 
-- `trigger_column`
-- `eeg_column`
-- `delimiter`
-- `skip_header`
+- **SD-card** (5-column format, trigger in column 0, EEG in column 2)
+- **LabChart** (2-column format, interval trigger in column 0, EEG in column 1)
 
-All modules reference these names, so format changes are centralized in config.
+Format definitions are centralized in `FILE_FORMATS` inside `ver_config.py`.
+
+## Fast Replay Mode
+
+Use the **Fast mode** checkbox in the Controls panel to run replay faster than real-time.
+Sampling rate remains at 250 Hz for all calculations.
 
 ## Output Report
 
@@ -61,6 +64,7 @@ The final report is saved next to the selected input file and includes:
 
 - minute-by-minute VER averages arranged sequentially across a wide top panel,
 - individual minute wavelet scalograms shown sequentially in one wide panel,
+- per-minute wavelet peak statistics (peak frequency, latency, and power),
 - any final partial minute that reaches at least 50% of the required flashes.
 
 Files are saved as PNG with a timestamp in the filename.

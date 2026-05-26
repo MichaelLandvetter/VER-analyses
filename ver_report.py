@@ -98,6 +98,15 @@ def save_ver_report(
     ax2.set_ylabel("Frequency (Hz)")
     fig.colorbar(im, ax=ax2, label="Power", shrink=0.9)
 
+    stats_lines = []
+    for idx, wavelet in enumerate(session_wavelets):
+        peak_idx = np.unravel_index(np.argmax(wavelet), wavelet.shape)
+        peak_freq = float(session_wavelet_freqs[peak_idx[0]])
+        peak_latency_ms = float(epoch_time_ms[peak_idx[1]])
+        peak_power = float(wavelet[peak_idx])
+        stats_lines.append(f"M{idx + 1}: {peak_freq:.1f} Hz | {peak_latency_ms:.0f} ms | Power {peak_power:.2f}")
+    fig.text(0.01, 0.01, "   ".join(stats_lines), fontsize=7, color="gray", ha="left", va="bottom", wrap=True)
+
     input_path = Path(input_file)
     out_dir = input_path.parent
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
