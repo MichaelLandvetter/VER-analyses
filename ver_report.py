@@ -144,9 +144,9 @@ def _build_figures_page(
     ax1.set_ylabel("Amplitude (µV)")
     ax1.legend(
         handles=[
-            Line2D([0], [0], marker='^', color="blue", linestyle="None", markersize=6, label="Peak-1"),
-            Line2D([0], [0], marker='^', color="red", linestyle="None", markersize=6, label="Peak-2"),
-            Line2D([0], [0], marker='^', color="green", linestyle="None", markersize=6, label="Peak-3"),
+            Line2D([0], [0], marker='D', color="blue", linestyle="None", markersize=6, label="Peak-1"),
+            Line2D([0], [0], marker='D', color="red", linestyle="None", markersize=6, label="Peak-2"),
+            Line2D([0], [0], marker='D', color="green", linestyle="None", markersize=6, label="Peak-3"),
         ],
         loc="upper right",
         fontsize=8,

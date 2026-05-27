@@ -48,7 +48,9 @@ def detect_ver_peaks(epoch_avg: np.ndarray, epoch_time_ms: np.ndarray) -> dict[s
     all_peak_indices = np.concatenate([pos_peaks, neg_peaks])
 
     if len(all_peak_indices) == 0:
-        # No local extrema found — fall back to top 3 absolute values
+        # No local extrema found (e.g. flat signal) — fall back to the samples with the
+        # largest absolute values. These may not be strict local maxima, but they represent
+        # the most prominent features in a signal with no clear peaks.
         all_peak_indices = np.argsort(np.abs(segment))[-3:]
 
     # Rank by absolute amplitude, take top 3
