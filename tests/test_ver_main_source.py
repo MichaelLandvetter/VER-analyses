@@ -13,6 +13,7 @@ class VERMainSourceTests(unittest.TestCase):
         self.assertIn("self.format_combo.addItems(list(FILE_FORMATS.keys()))", self.source)
         self.assertIn("def _on_format_changed(self, format_name: str):", self.source)
         self.assertIn("FILE_CONFIG.update(FILE_FORMATS[format_name])", self.source)
+        self.assertIn("self.reset_all()", self.source)
 
     def test_speed_selector_combo_is_wired_to_speed_factor(self):
         self.assertIn('self.speed_combo = QComboBox()', self.source)

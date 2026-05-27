@@ -50,12 +50,13 @@ class VERDisplaySourceTests(unittest.TestCase):
     def test_safe_default_plot_ranges_are_applied(self):
         self.assertIn("self.plot_sessions.setXRange(-100, 400, padding=0)", self.source)
         self.assertIn("self.plot_sessions.setYRange(-1, 1, padding=0)", self.source)
-        self.assertIn("self.plot_raw.setXRange(0, self.scroll_seconds, padding=0)", self.source)
+        self.assertIn("self.plot_raw.enableAutoRange('x', True)", self.source)
         self.assertIn("self.plot_raw.setYRange(-1, 1, padding=0)", self.source)
-        self.assertIn('self.plot_scope.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)', self.source)
+        self.assertIn("self.plot_scope.setXRange(-50, 400, padding=0)", self.source)
         self.assertIn("self.plot_scope.setYRange(-1, 1, padding=0)", self.source)
-        self.assertIn('self.plot_wavelet.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)', self.source)
+        self.assertIn("self.plot_wavelet.setXRange(-50, 400, padding=0)", self.source)
         self.assertIn("self.plot_wavelet.setYRange(0, 50, padding=0)", self.source)
+        self.assertIn("self._offset_step = None", self.source)
 
 
 if __name__ == "__main__":
