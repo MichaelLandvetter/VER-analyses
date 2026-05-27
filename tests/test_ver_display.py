@@ -45,6 +45,17 @@ class VERDisplaySourceTests(unittest.TestCase):
         self.assertIn('"N75": {"symbol": "t1", "color": "#4488FF"}', self.source)
         self.assertIn('"P100": {"symbol": "t", "color": "#FF4444"}', self.source)
         self.assertIn('"N135": {"symbol": "t1", "color": "#44FF88"}', self.source)
+        self.assertIn("if math.isnan(marker_x) or math.isnan(marker_y):", self.source)
+
+    def test_safe_default_plot_ranges_are_applied(self):
+        self.assertIn("self.plot_sessions.setXRange(-100, 400, padding=0)", self.source)
+        self.assertIn("self.plot_sessions.setYRange(-1, 1, padding=0)", self.source)
+        self.assertIn("self.plot_raw.setXRange(0, self.scroll_seconds, padding=0)", self.source)
+        self.assertIn("self.plot_raw.setYRange(-1, 1, padding=0)", self.source)
+        self.assertIn('self.plot_scope.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)', self.source)
+        self.assertIn("self.plot_scope.setYRange(-1, 1, padding=0)", self.source)
+        self.assertIn('self.plot_wavelet.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)', self.source)
+        self.assertIn("self.plot_wavelet.setYRange(0, 50, padding=0)", self.source)
 
 
 if __name__ == "__main__":

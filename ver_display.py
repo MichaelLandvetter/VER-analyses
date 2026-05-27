@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
+import math
 from typing import List, Optional
 
 import numpy as np
@@ -52,6 +53,7 @@ class VERDisplayWidget(QWidget):
         self.plot_sessions.setLabel("left", "Minute")
         self.plot_sessions.setTitle("VER Evolution — Minute by Minute")
         self.plot_sessions.setXRange(-100, 400, padding=0)
+        self.plot_sessions.setYRange(-1, 1, padding=0)
         self.plot_sessions.getAxis("left").setTicks([[]])
         self._offset_step = None
         self._session_ticks: List[tuple[float, str]] = []
@@ -68,6 +70,8 @@ class VERDisplayWidget(QWidget):
         self.plot_raw.showGrid(x=True, y=True, alpha=0.3)
         self.plot_raw.setLabel("bottom", "Time", "s")
         self.plot_raw.setLabel("left", "Amplitude")
+        self.plot_raw.setXRange(0, self.scroll_seconds, padding=0)
+        self.plot_raw.setYRange(-1, 1, padding=0)
         self.curve_raw = self.plot_raw.plot(pen=pg.mkPen((170, 170, 170), width=1))
         self.curve_filtered = self.plot_raw.plot(pen=pg.mkPen((0, 220, 120), width=1.5))
         self.flash_scatter = pg.ScatterPlotItem(size=6, brush=pg.mkBrush(255, 0, 0, 180), pen=pg.mkPen(None))
@@ -79,6 +83,7 @@ class VERDisplayWidget(QWidget):
         self.plot_scope.setLabel("bottom", "Time", "ms")
         self.plot_scope.setLabel("left", "Amplitude")
         self.plot_scope.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)
+        self.plot_scope.setYRange(-1, 1, padding=0)
         self.scope_avg_curve = self.plot_scope.plot(pen=pg.mkPen((255, 200, 0), width=3))
         self.scope_overlay_curves: List[pg.PlotCurveItem] = []
 
@@ -87,6 +92,7 @@ class VERDisplayWidget(QWidget):
         self.plot_wavelet.setLabel("bottom", "Time", "ms")
         self.plot_wavelet.setLabel("left", "Frequency", "Hz")
         self.plot_wavelet.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)
+        self.plot_wavelet.setYRange(0, 50, padding=0)
         self.wavelet_image = pg.ImageItem()
         self.plot_wavelet.addItem(self.wavelet_image)
 
@@ -225,6 +231,8 @@ class VERDisplayWidget(QWidget):
                 if peak and peak.get("found"):
                     marker_x = float(peak["latency_ms"])
                     marker_y = float(peak["amplitude"]) + offset
+                    if math.isnan(marker_x) or math.isnan(marker_y):
+                        continue
                     scatter = pg.ScatterPlotItem(
                         x=[marker_x],
                         y=[marker_y],
@@ -262,3 +270,9 @@ class VERDisplayWidget(QWidget):
         self.wavelet_image.setImage(np.zeros((2, 2)))
         self.wavelet_stats_label.setText("Peak: — Hz | — ms | Power: —")
         self._reset_sessions_panel()
+        self.plot_raw.setXRange(0, self.scroll_seconds, padding=0)
+        self.plot_raw.setYRange(-1, 1, padding=0)
+        self.plot_scope.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)
+        self.plot_scope.setYRange(-1, 1, padding=0)
+        self.plot_wavelet.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)
+        self.plot_wavelet.setYRange(0, 50, padding=0)
