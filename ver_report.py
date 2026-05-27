@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import List, Optional
 
@@ -120,6 +121,8 @@ def _build_figures_page(
                 if peak and peak.get("found"):
                     marker_x = float(peak["latency_ms"]) - epoch_start + x_offset
                     marker_y = float(peak["amplitude"])
+                    if math.isnan(marker_x) or math.isnan(marker_y):
+                        continue
                     ax1.plot(
                         marker_x,
                         marker_y,

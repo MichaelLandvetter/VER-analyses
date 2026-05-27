@@ -105,6 +105,44 @@ class VERReportTests(unittest.TestCase):
 
         plt.close(fig)
 
+    def test_report_ignores_nan_peak_markers(self):
+        import matplotlib.pyplot as plt
+        from ver_report import _build_figures_page
+        from ver_wavelet import compute_wavelet_scalogram
+
+        epoch_time_ms = np.linspace(-50, 400, 126)
+        session_averages_list = [np.sin(np.linspace(0, 3 * np.pi, epoch_time_ms.size))]
+        averages = np.asarray(session_averages_list)
+
+        session_wavelets = []
+        session_wavelet_freqs = None
+        for avg in session_averages_list:
+            power, freqs = compute_wavelet_scalogram(avg)
+            session_wavelets.append(power)
+            session_wavelet_freqs = freqs
+
+        fig = _build_figures_page(
+            averages,
+            epoch_time_ms,
+            session_wavelets,
+            session_wavelet_freqs,
+            float(session_wavelet_freqs[0]),
+            float(session_wavelet_freqs[-1]),
+            ["Minute 1"],
+            session_ver_peaks=[{
+                "N75": {"found": True, "latency_ms": float("nan"), "amplitude": -0.5},
+                "P100": {"found": True, "latency_ms": 100.0, "amplitude": float("nan")},
+                "N135": {"found": True, "latency_ms": float("nan"), "amplitude": float("nan")},
+            }],
+        )
+
+        ax1 = fig.axes[0]
+        for line in ax1.lines:
+            self.assertTrue(np.all(np.isfinite(line.get_xdata())))
+            self.assertTrue(np.all(np.isfinite(line.get_ydata())))
+
+        plt.close(fig)
+
 
 if __name__ == "__main__":
     unittest.main()
