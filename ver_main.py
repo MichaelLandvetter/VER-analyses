@@ -391,6 +391,7 @@ class VERMainWindow(QMainWindow):
     def _on_format_changed(self, format_name: str):
         FILE_CONFIG.update(FILE_FORMATS[format_name])
         self.display.set_status(f"File format: {format_name}")
+        self.reset_all()
 
     def _set_current_format(self):
         current = {key: FILE_CONFIG.get(key) for key in ("delimiter", "trigger_column", "eeg_column", "skip_header", "trigger_mode", "trigger_threshold")}
