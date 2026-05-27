@@ -53,7 +53,7 @@ class VERDisplayWidget(QWidget):
         self.plot_sessions.setLabel("left", "Minute")
         self.plot_sessions.setTitle("VER Evolution — Minute by Minute")
         self.plot_sessions.setXRange(-100, 400, padding=0)
-        self.plot_sessions.setYRange(-1, 1, padding=0)
+        self.plot_sessions.enableAutoRange('y', True)
         self.plot_sessions.getAxis("left").setTicks([[]])
         self._offset_step = None
         self._session_ticks: List[tuple[float, str]] = []
@@ -83,7 +83,7 @@ class VERDisplayWidget(QWidget):
         self.plot_scope.setLabel("bottom", "Time", "ms")
         self.plot_scope.setLabel("left", "Amplitude")
         self.plot_scope.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)
-        self.plot_scope.setYRange(-1, 1, padding=0)
+        self.plot_scope.enableAutoRange('y', True)
         self.scope_avg_curve = self.plot_scope.plot(pen=pg.mkPen((255, 200, 0), width=3))
         self.scope_overlay_curves: List[pg.PlotCurveItem] = []
 
@@ -178,11 +178,10 @@ class VERDisplayWidget(QWidget):
     def update_wavelet_stats(self, peak_freq: float, peak_latency_ms: float, peak_power: float, session_number: int, ver_peaks=None) -> None:
         wavelet_text = f"M{session_number} — Wavelet peak: {peak_freq:.1f} Hz | {peak_latency_ms:.0f} ms | Power: {peak_power:.3e}"
         if ver_peaks:
-            n75 = ver_peaks['N75']
-            p100 = ver_peaks['P100']
-            n135 = ver_peaks['N135']
-            def fmt(p): return f"{p['latency_ms']:.0f} ms ({p['amplitude']:.4f})" if p['found'] else "\u2014"
-            peaks_text = f"  |  N75: {fmt(n75)}  P100: {fmt(p100)}  N135: {fmt(n135)}"
+            def fmt(p): return f"{p['latency_ms']:.0f} ms ({p['amplitude']:.4f})" if p.get('found') else "\u2014"
+            peaks_text = (f"  |  Peak-1: {fmt(ver_peaks.get('Peak-1', {}))}  "
+                          f"Peak-2: {fmt(ver_peaks.get('Peak-2', {}))}  "
+                          f"Peak-3: {fmt(ver_peaks.get('Peak-3', {}))}")
             wavelet_text += peaks_text
         self.wavelet_stats_label.setText(wavelet_text)
 
@@ -222,9 +221,9 @@ class VERDisplayWidget(QWidget):
         )
         if ver_peaks:
             peak_styles = {
-                "N75": {"symbol": "t1", "color": "#4488FF"},
-                "P100": {"symbol": "t", "color": "#FF4444"},
-                "N135": {"symbol": "t1", "color": "#44FF88"},
+                "Peak-1": {"color": "#4488FF"},
+                "Peak-2": {"color": "#FF4444"},
+                "Peak-3": {"color": "#44FF88"},
             }
             for peak_name, style in peak_styles.items():
                 peak = ver_peaks.get(peak_name)
@@ -233,10 +232,11 @@ class VERDisplayWidget(QWidget):
                     marker_y = float(peak["amplitude"]) + offset
                     if math.isnan(marker_x) or math.isnan(marker_y):
                         continue
+                    symbol = 't' if peak["amplitude"] >= 0 else 't1'
                     scatter = pg.ScatterPlotItem(
                         x=[marker_x],
                         y=[marker_y],
-                        symbol=style["symbol"],
+                        symbol=symbol,
                         size=10,
                         brush=pg.mkBrush(style["color"]),
                         pen=pg.mkPen(None),
@@ -274,6 +274,6 @@ class VERDisplayWidget(QWidget):
         self.plot_raw.enableAutoRange('x', True)
         self.plot_raw.setYRange(-1, 1, padding=0)
         self.plot_scope.setXRange(-50, 400, padding=0)
-        self.plot_scope.setYRange(-1, 1, padding=0)
+        self.plot_scope.enableAutoRange('y', True)
         self.plot_wavelet.setXRange(-50, 400, padding=0)
         self.plot_wavelet.setYRange(0, 50, padding=0)

@@ -61,14 +61,14 @@ class VERReportTests(unittest.TestCase):
         labels = ["Minute 1", "Minute 2"]
         session_ver_peaks = [
             {
-                "N75": {"found": True, "latency_ms": 75.0, "amplitude": -0.5},
-                "P100": {"found": True, "latency_ms": 100.0, "amplitude": 0.8},
-                "N135": {"found": True, "latency_ms": 135.0, "amplitude": -0.3},
+                "Peak-1": {"found": True, "latency_ms": 75.0, "amplitude": -0.5},
+                "Peak-2": {"found": True, "latency_ms": 100.0, "amplitude": 0.8},
+                "Peak-3": {"found": True, "latency_ms": 135.0, "amplitude": -0.3},
             },
             {
-                "N75": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
-                "P100": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
-                "N135": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
+                "Peak-1": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
+                "Peak-2": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
+                "Peak-3": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
             },
         ]
 
@@ -101,7 +101,7 @@ class VERReportTests(unittest.TestCase):
         self.assertEqual([tick.get_text() for tick in ax2.get_xticklabels()], ["M1", "M2"])
         self.assertEqual(colorbar_ax.get_ylabel(), "Power")
         self.assertIsNotNone(ax1.get_legend())
-        self.assertEqual([text.get_text() for text in ax1.get_legend().get_texts()], ["N75", "P100", "N135"])
+        self.assertEqual([text.get_text() for text in ax1.get_legend().get_texts()], ["Peak-1", "Peak-2", "Peak-3"])
 
         plt.close(fig)
 
@@ -130,9 +130,9 @@ class VERReportTests(unittest.TestCase):
             float(session_wavelet_freqs[-1]),
             ["Minute 1"],
             session_ver_peaks=[{
-                "N75": {"found": True, "latency_ms": float("nan"), "amplitude": -0.5},
-                "P100": {"found": True, "latency_ms": 100.0, "amplitude": float("nan")},
-                "N135": {"found": True, "latency_ms": float("nan"), "amplitude": float("nan")},
+                "Peak-1": {"found": True, "latency_ms": float("nan"), "amplitude": -0.5},
+                "Peak-2": {"found": True, "latency_ms": 100.0, "amplitude": float("nan")},
+                "Peak-3": {"found": True, "latency_ms": float("nan"), "amplitude": float("nan")},
             }],
         )
 
