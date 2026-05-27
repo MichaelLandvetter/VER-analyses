@@ -60,11 +60,14 @@ Sampling rate remains at 250 Hz for all calculations.
 
 ## Output Report
 
-The final report is saved next to the selected input file and includes:
+The final report is saved under `Reports/<input-file-stem>/` next to the selected input file and includes:
 
 - minute-by-minute VER averages arranged sequentially across a wide top panel,
 - individual minute wavelet scalograms shown sequentially in one wide panel,
 - per-minute wavelet peak statistics (peak frequency, latency, and power),
 - any final partial minute that reaches at least 50% of the required flashes.
 
-Files are saved as PNG with a timestamp in the filename.
+Files are saved as:
+
+- `<input-file-stem>.png`
+- `<input-file-stem>.pdf`

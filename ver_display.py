@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import pyqtgraph as pg
@@ -154,7 +154,11 @@ class VERDisplayWidget(QWidget):
         self.scope_avg_curve.setData([], [])
 
     def update_wavelet_panel(self, power: np.ndarray, freqs: np.ndarray, epoch_time_ms: np.ndarray, session_number: int) -> None:
-        self.wavelet_image.setImage(power.T, autoLevels=True)
+        display_power = np.asarray(power, dtype=float)
+        power_max = float(np.max(display_power)) if display_power.size else 0.0
+        if power_max > 0:
+            display_power = display_power / power_max
+        self.wavelet_image.setImage(display_power.T, autoLevels=True)
         x0 = float(epoch_time_ms[0])
         y0 = float(freqs[0])
         dx = float(epoch_time_ms[-1] - epoch_time_ms[0]) / max(1, power.shape[1] - 1)
@@ -166,7 +170,7 @@ class VERDisplayWidget(QWidget):
         self.plot_wavelet.setTitle(f"Wavelet Scalogram - Minute {session_number}")
 
     def update_wavelet_stats(self, peak_freq: float, peak_latency_ms: float, peak_power: float, session_number: int, ver_peaks=None) -> None:
-        wavelet_text = f"M{session_number} — Wavelet peak: {peak_freq:.1f} Hz | {peak_latency_ms:.0f} ms | Power: {peak_power:.4f}"
+        wavelet_text = f"M{session_number} — Wavelet peak: {peak_freq:.1f} Hz | {peak_latency_ms:.0f} ms | Power: {peak_power:.3e}"
         if ver_peaks:
             n75 = ver_peaks['N75']
             p100 = ver_peaks['P100']
@@ -191,6 +195,7 @@ class VERDisplayWidget(QWidget):
         session_avg: np.ndarray,
         session_number: int,
         session_label: str | None = None,
+        ver_peaks: Optional[dict] = None,
     ) -> None:
         offset_step = self._compute_offset_step(session_avg)
         offset = (EPOCH_CONFIG["num_sessions"] - session_number) * offset_step
@@ -209,6 +214,26 @@ class VERDisplayWidget(QWidget):
             session_avg + offset,
             pen=pg.mkPen(color, width=2),
         )
+        if ver_peaks:
+            peak_styles = {
+                "N75": {"symbol": "t1", "color": "#4488FF"},
+                "P100": {"symbol": "t", "color": "#FF4444"},
+                "N135": {"symbol": "t1", "color": "#44FF88"},
+            }
+            for peak_name, style in peak_styles.items():
+                peak = ver_peaks.get(peak_name)
+                if peak and peak.get("found"):
+                    marker_x = float(peak["latency_ms"])
+                    marker_y = float(peak["amplitude"]) + offset
+                    scatter = pg.ScatterPlotItem(
+                        x=[marker_x],
+                        y=[marker_y],
+                        symbol=style["symbol"],
+                        size=10,
+                        brush=pg.mkBrush(style["color"]),
+                        pen=pg.mkPen(None),
+                    )
+                    self.plot_sessions.addItem(scatter)
         text = pg.TextItem(label_text, color=color, anchor=(1, 0.5))
         text.setPos(float(epoch_time_ms[0]) - 5.0, offset)
         self.plot_sessions.addItem(text)

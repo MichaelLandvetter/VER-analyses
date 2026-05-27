@@ -105,21 +105,19 @@ class VERProcessingTests(unittest.TestCase):
         self.assertGreater(power.shape[0], 0)
         self.assertEqual(power.shape[0], freqs.shape[0])
 
-    def test_wavelet_power_normalised_to_0_1(self):
+    def test_wavelet_power_returns_positive_values(self):
         epoch = np.sin(2 * np.pi * 10 * np.arange(125) / 250.0)
         power, _ = compute_wavelet_scalogram(epoch)
-        self.assertAlmostEqual(float(np.max(power)), 1.0, places=6)
         self.assertGreaterEqual(float(np.min(power)), 0.0)
+        self.assertGreater(float(np.max(power)), 0.0)
 
-    def test_wavelet_power_comparable_across_amplitude_scales(self):
-        """Power should be normalised so SD-card and LabChart amplitudes give same max."""
+    def test_wavelet_power_scales_with_signal_amplitude(self):
         t = np.arange(125) / 250.0
         epoch_large = 10.0 * np.sin(2 * np.pi * 10 * t)
         epoch_small = 0.02 * np.sin(2 * np.pi * 10 * t)
         power_large, _ = compute_wavelet_scalogram(epoch_large)
         power_small, _ = compute_wavelet_scalogram(epoch_small)
-        self.assertAlmostEqual(float(np.max(power_large)), 1.0, places=6)
-        self.assertAlmostEqual(float(np.max(power_small)), 1.0, places=6)
+        self.assertGreater(float(np.max(power_large)), float(np.max(power_small)))
 
     def test_detect_ver_peaks_finds_expected_peaks(self):
         """Synthetic waveform with known peaks in expected windows."""

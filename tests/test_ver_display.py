@@ -31,9 +31,20 @@ class VERDisplaySourceTests(unittest.TestCase):
     def test_wavelet_stats_label_and_update_method_exist(self):
         self.assertIn('self.wavelet_stats_label = QLabel("Peak: — Hz | — ms | Power: —")', self.source)
         self.assertIn(
-            'f"M{session_number} — Wavelet peak: {peak_freq:.1f} Hz | {peak_latency_ms:.0f} ms | Power: {peak_power:.4f}"',
+            'f"M{session_number} — Wavelet peak: {peak_freq:.1f} Hz | {peak_latency_ms:.0f} ms | Power: {peak_power:.3e}"',
             self.source,
         )
+
+    def test_wavelet_panel_uses_local_normalisation_for_display(self):
+        self.assertIn("display_power = np.asarray(power, dtype=float)", self.source)
+        self.assertIn("display_power = display_power / power_max", self.source)
+
+    def test_session_average_supports_ver_peak_markers(self):
+        self.assertIn("ver_peaks: Optional[dict] = None", self.source)
+        self.assertIn('peak_styles = {', self.source)
+        self.assertIn('"N75": {"symbol": "t1", "color": "#4488FF"}', self.source)
+        self.assertIn('"P100": {"symbol": "t", "color": "#FF4444"}', self.source)
+        self.assertIn('"N135": {"symbol": "t1", "color": "#44FF88"}', self.source)
 
 
 if __name__ == "__main__":

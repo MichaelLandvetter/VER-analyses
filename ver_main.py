@@ -380,7 +380,13 @@ class VERMainWindow(QMainWindow):
 
         self.display.update_wavelet_panel(power, freqs, self.scope.epoch_time_ms, session_num)
         self.display.update_wavelet_stats(peak_freq, peak_latency_ms, peak_power, session_num, ver_peaks=ver_peaks)
-        self.display.add_session_average(self.scope.epoch_time_ms, session_avg, session_num, session_label=label)
+        self.display.add_session_average(
+            self.scope.epoch_time_ms,
+            session_avg,
+            session_num,
+            session_label=label,
+            ver_peaks=ver_peaks,
+        )
 
     def _on_format_changed(self, format_name: str):
         FILE_CONFIG.update(FILE_FORMATS[format_name])
@@ -411,10 +417,14 @@ class VERMainWindow(QMainWindow):
         if result is None:
             QMessageBox.information(self, "No data", "No completed minutes available yet.")
             return
-        msg = f"Saved:\n{result['png']}"
-        if "pdf" in result:
-            msg += f"\n{result['pdf']}"
-        QMessageBox.information(self, "Report saved", msg)
+        report_dir = result.get("report_dir", str(Path(result["png"]).parent))
+        png_name = Path(result["png"]).name
+        pdf_name = Path(result["pdf"]).name if "pdf" in result else "—"
+        QMessageBox.information(
+            self,
+            "Report saved",
+            f"Reports saved to:\n{report_dir}\n\nPNG: {png_name}\nPDF: {pdf_name}",
+        )
 
     def closeEvent(self, event):
         self._shutdown_worker()

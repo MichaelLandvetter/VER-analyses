@@ -25,6 +25,10 @@ class VERMainSourceTests(unittest.TestCase):
     def test_wavelet_stats_are_computed_and_sent_to_display(self):
         self.assertIn("peak_idx = np.unravel_index(np.argmax(power), power.shape)", self.source)
         self.assertIn("self.display.update_wavelet_stats(peak_freq, peak_latency_ms, peak_power, session_num, ver_peaks=ver_peaks)", self.source)
+        self.assertIn("ver_peaks=ver_peaks", self.source)
+
+    def test_report_success_message_shows_report_directory(self):
+        self.assertIn('f"Reports saved to:\\n{report_dir}', self.source)
 
 
 if __name__ == "__main__":
