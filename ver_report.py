@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.lines import Line2D
 
 from ver_wavelet import compute_wavelet_scalogram
 
@@ -16,6 +16,15 @@ MINUTE_COLORS = [
     "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
     "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
 ]
+
+
+def _get_report_dir(data_file_path: str) -> Path:
+    """Create and return the report output directory."""
+    data_path = Path(data_file_path)
+    report_dir = data_path.parent / "Reports" / data_path.stem
+    report_dir.mkdir(parents=True, exist_ok=True)
+    return report_dir
+
 
 def save_ver_report(
     input_file: str,
@@ -40,21 +49,27 @@ def save_ver_report(
         session_wavelets = computed_wavelets
         session_wavelet_freqs = freqs
 
-    session_wavelets_arr = np.asarray(session_wavelets)
     freq_min = float(session_wavelet_freqs[0])
     freq_max = float(session_wavelet_freqs[-1])
     labels = session_labels or [f"Minute {idx}" for idx in range(1, len(averages) + 1)]
 
-    fig1 = _build_figures_page(averages, epoch_time_ms, session_wavelets, session_wavelets_arr, session_wavelet_freqs, freq_min, freq_max, labels)
+    fig1 = _build_figures_page(
+        averages,
+        epoch_time_ms,
+        session_wavelets,
+        session_wavelet_freqs,
+        freq_min,
+        freq_max,
+        labels,
+        session_ver_peaks=session_ver_peaks,
+    )
 
     fig2 = _build_stats_table_page(session_wavelets, session_wavelet_freqs, epoch_time_ms, labels, session_ver_peaks)
 
-    input_path = Path(input_file)
-    out_dir = input_path.parent
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    stem = input_path.stem
-    png_path = out_dir / f"{stem}_ver_report_{ts}.png"
-    pdf_path = out_dir / f"{stem}_ver_report_{ts}.pdf"
+    report_dir = _get_report_dir(input_file)
+    stem = Path(input_file).stem
+    png_path = report_dir / f"{stem}.png"
+    pdf_path = report_dir / f"{stem}.pdf"
 
     fig1.savefig(png_path, dpi=150)
 
@@ -65,18 +80,18 @@ def save_ver_report(
     plt.close(fig1)
     plt.close(fig2)
 
-    return {"png": str(png_path), "pdf": str(pdf_path)}
+    return {"png": str(png_path), "pdf": str(pdf_path), "report_dir": str(report_dir)}
 
 
 def _build_figures_page(
     averages: np.ndarray,
     epoch_time_ms: np.ndarray,
     session_wavelets: List[np.ndarray],
-    session_wavelets_arr: np.ndarray,
     session_wavelet_freqs: np.ndarray,
     freq_min: float,
     freq_max: float,
     labels: List[str],
+    session_ver_peaks: Optional[List[dict]] = None,
 ) -> plt.Figure:
     fig = plt.figure(figsize=(18, 10), facecolor="white", constrained_layout=True)
     gs = fig.add_gridspec(2, 1)
@@ -98,6 +113,21 @@ def _build_figures_page(
         )
         if idx > 0:
             ax1.axvline(x=x_offset, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
+        ver_peaks = session_ver_peaks[idx] if session_ver_peaks and idx < len(session_ver_peaks) else None
+        if ver_peaks:
+            for peak_name, color, marker in [("N75", "blue", "v"), ("P100", "red", "^"), ("N135", "green", "v")]:
+                peak = ver_peaks.get(peak_name)
+                if peak and peak.get("found"):
+                    marker_x = float(peak["latency_ms"]) - epoch_start + x_offset
+                    marker_y = float(peak["amplitude"])
+                    ax1.plot(
+                        marker_x,
+                        marker_y,
+                        marker=marker,
+                        color=color,
+                        markersize=6,
+                        linestyle="None",
+                    )
     total_width = epoch_width * len(averages)
     tick_positions = [(idx + 0.5) * epoch_width for idx in range(len(averages))]
     tick_labels = [f"M{idx + 1}" for idx in range(len(averages))]
@@ -108,13 +138,30 @@ def _build_figures_page(
     ax1.set_title("VER Evolution — Minute by Minute")
     ax1.set_xlabel("Minute")
     ax1.set_ylabel("Amplitude (µV)")
+    ax1.legend(
+        handles=[
+            Line2D([0], [0], marker="v", color="blue", linestyle="None", markersize=6, label="N75"),
+            Line2D([0], [0], marker="^", color="red", linestyle="None", markersize=6, label="P100"),
+            Line2D([0], [0], marker="v", color="green", linestyle="None", markersize=6, label="N135"),
+        ],
+        loc="upper right",
+        fontsize=8,
+        framealpha=0.8,
+    )
 
     # Row 2: Wavelet scalograms sequentially in one wide panel
-    vmin = float(np.min(session_wavelets_arr))
-    vmax = float(np.max(session_wavelets_arr))
     ax2 = fig.add_subplot(gs[1, 0])
     ax2.set_facecolor("white")
-    combined_wavelets = np.hstack(session_wavelets)
+    normalised_wavelets = []
+    for wavelet in session_wavelets:
+        display_wavelet = np.asarray(wavelet, dtype=float)
+        wavelet_max = float(np.max(display_wavelet)) if display_wavelet.size else 0.0
+        if wavelet_max > 0:
+            display_wavelet = display_wavelet / wavelet_max
+        normalised_wavelets.append(display_wavelet)
+    combined_wavelets = np.hstack(normalised_wavelets)
+    vmin = float(np.min(combined_wavelets))
+    vmax = float(np.max(combined_wavelets))
     im = ax2.imshow(
         combined_wavelets,
         extent=[0.0, total_width, freq_min, freq_max],
@@ -182,7 +229,7 @@ def _build_stats_table_page(
             n135_lat, n135_amp,
             f"{peak_freq:.1f}",
             f"{peak_latency_ms:.0f}",
-            f"{peak_power:.4f}",
+            f"{peak_power:.3e}",
         ])
 
     table = ax.table(
