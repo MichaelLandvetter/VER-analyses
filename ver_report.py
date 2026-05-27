@@ -116,13 +116,14 @@ def _build_figures_page(
             ax1.axvline(x=x_offset, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
         ver_peaks = session_ver_peaks[idx] if session_ver_peaks and idx < len(session_ver_peaks) else None
         if ver_peaks:
-            for peak_name, color, marker in [("N75", "blue", "v"), ("P100", "red", "^"), ("N135", "green", "v")]:
+            for peak_name, color in [("Peak-1", "blue"), ("Peak-2", "red"), ("Peak-3", "green")]:
                 peak = ver_peaks.get(peak_name)
                 if peak and peak.get("found"):
                     marker_x = float(peak["latency_ms"]) - epoch_start + x_offset
                     marker_y = float(peak["amplitude"])
                     if math.isnan(marker_x) or math.isnan(marker_y):
                         continue
+                    marker = '^' if peak["amplitude"] >= 0 else 'v'
                     ax1.plot(
                         marker_x,
                         marker_y,
@@ -143,9 +144,9 @@ def _build_figures_page(
     ax1.set_ylabel("Amplitude (µV)")
     ax1.legend(
         handles=[
-            Line2D([0], [0], marker="v", color="blue", linestyle="None", markersize=6, label="N75"),
-            Line2D([0], [0], marker="^", color="red", linestyle="None", markersize=6, label="P100"),
-            Line2D([0], [0], marker="v", color="green", linestyle="None", markersize=6, label="N135"),
+            Line2D([0], [0], marker='D', color="blue", linestyle="None", markersize=6, label="Peak-1"),
+            Line2D([0], [0], marker='D', color="red", linestyle="None", markersize=6, label="Peak-2"),
+            Line2D([0], [0], marker='D', color="green", linestyle="None", markersize=6, label="Peak-3"),
         ],
         loc="upper right",
         fontsize=8,
@@ -199,9 +200,9 @@ def _build_stats_table_page(
 
     col_labels = [
         "Minute", "Label",
-        "N75 Latency (ms)", "N75 Amp",
-        "P100 Latency (ms)", "P100 Amp",
-        "N135 Latency (ms)", "N135 Amp",
+        "Peak-1 Latency (ms)", "Peak-1 Amp",
+        "Peak-2 Latency (ms)", "Peak-2 Amp",
+        "Peak-3 Latency (ms)", "Peak-3 Amp",
         "Peak Freq (Hz)", "Peak Latency (ms)", "Peak Power",
     ]
     rows = []
@@ -220,16 +221,16 @@ def _build_stats_table_page(
             return "\u2014", "\u2014"
 
         ver_peaks = session_ver_peaks[idx] if session_ver_peaks and idx < len(session_ver_peaks) else None
-        n75_lat, n75_amp = _fmt_peak(ver_peaks, 'N75')
-        p100_lat, p100_amp = _fmt_peak(ver_peaks, 'P100')
-        n135_lat, n135_amp = _fmt_peak(ver_peaks, 'N135')
+        p1_lat, p1_amp = _fmt_peak(ver_peaks, 'Peak-1')
+        p2_lat, p2_amp = _fmt_peak(ver_peaks, 'Peak-2')
+        p3_lat, p3_amp = _fmt_peak(ver_peaks, 'Peak-3')
 
         rows.append([
             str(idx + 1),
             labels[idx] if idx < len(labels) else f"Minute {idx + 1}",
-            n75_lat, n75_amp,
-            p100_lat, p100_amp,
-            n135_lat, n135_amp,
+            p1_lat, p1_amp,
+            p2_lat, p2_amp,
+            p3_lat, p3_amp,
             f"{peak_freq:.1f}",
             f"{peak_latency_ms:.0f}",
             f"{peak_power:.3e}",

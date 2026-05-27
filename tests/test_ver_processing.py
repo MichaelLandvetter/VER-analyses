@@ -120,37 +120,59 @@ class VERProcessingTests(unittest.TestCase):
         self.assertGreater(float(np.max(power_large)), float(np.max(power_small)))
 
     def test_detect_ver_peaks_finds_expected_peaks(self):
-        """Synthetic waveform with known peaks in expected windows."""
+        """Synthetic waveform with known peaks — three largest in 0–200ms, sorted by latency."""
         sample_rate = 250.0
         t = np.arange(-100, 300, 1000.0 / sample_rate)  # ms axis
-        # N75 at 75 ms (negative), P100 at 100 ms (positive), N135 at 135 ms (negative)
+        # Three peaks in 0–200ms: negative at ~75ms, positive at ~100ms, negative at ~135ms
         epoch = (
-            -1.5 * np.exp(-((t - 75) ** 2) / (2 * 10 ** 2))   # N75
-            + 2.0 * np.exp(-((t - 100) ** 2) / (2 * 10 ** 2))  # P100
-            - 1.0 * np.exp(-((t - 135) ** 2) / (2 * 10 ** 2))  # N135
+            -1.5 * np.exp(-((t - 75) ** 2) / (2 * 10 ** 2))   # largest negative peak at 75ms
+            + 2.0 * np.exp(-((t - 100) ** 2) / (2 * 10 ** 2))  # largest positive peak at 100ms
+            - 1.0 * np.exp(-((t - 135) ** 2) / (2 * 10 ** 2))  # smaller negative peak at 135ms
         )
         peaks = detect_ver_peaks(epoch, t)
 
-        self.assertTrue(peaks['N75']['found'])
-        self.assertTrue(peaks['P100']['found'])
-        self.assertTrue(peaks['N135']['found'])
+        self.assertTrue(peaks['Peak-1']['found'])
+        self.assertTrue(peaks['Peak-2']['found'])
+        self.assertTrue(peaks['Peak-3']['found'])
 
-        self.assertAlmostEqual(peaks['N75']['latency_ms'], 75.0, delta=5.0)
-        self.assertAlmostEqual(peaks['P100']['latency_ms'], 100.0, delta=5.0)
-        self.assertAlmostEqual(peaks['N135']['latency_ms'], 135.0, delta=5.0)
+        # Peaks are sorted by latency: ~75ms, ~100ms, ~135ms
+        self.assertAlmostEqual(peaks['Peak-1']['latency_ms'], 75.0, delta=5.0)
+        self.assertAlmostEqual(peaks['Peak-2']['latency_ms'], 100.0, delta=5.0)
+        self.assertAlmostEqual(peaks['Peak-3']['latency_ms'], 135.0, delta=5.0)
 
-        self.assertLess(peaks['N75']['amplitude'], 0)
-        self.assertGreater(peaks['P100']['amplitude'], 0)
-        self.assertLess(peaks['N135']['amplitude'], 0)
+        # Amplitudes retain sign
+        self.assertLess(peaks['Peak-1']['amplitude'], 0)
+        self.assertGreater(peaks['Peak-2']['amplitude'], 0)
+        self.assertLess(peaks['Peak-3']['amplitude'], 0)
+
+    def test_detect_ver_peaks_polarity_agnostic(self):
+        """Inverted polarity waveform (P-N-P) should also detect all three peaks."""
+        sample_rate = 250.0
+        t = np.arange(-100, 300, 1000.0 / sample_rate)  # ms axis
+        # Inverted: positive at ~75ms, negative at ~100ms, positive at ~135ms
+        epoch = (
+            1.5 * np.exp(-((t - 75) ** 2) / (2 * 10 ** 2))
+            - 2.0 * np.exp(-((t - 100) ** 2) / (2 * 10 ** 2))
+            + 1.0 * np.exp(-((t - 135) ** 2) / (2 * 10 ** 2))
+        )
+        peaks = detect_ver_peaks(epoch, t)
+
+        self.assertTrue(peaks['Peak-1']['found'])
+        self.assertTrue(peaks['Peak-2']['found'])
+        self.assertTrue(peaks['Peak-3']['found'])
+
+        self.assertAlmostEqual(peaks['Peak-1']['latency_ms'], 75.0, delta=5.0)
+        self.assertAlmostEqual(peaks['Peak-2']['latency_ms'], 100.0, delta=5.0)
+        self.assertAlmostEqual(peaks['Peak-3']['latency_ms'], 135.0, delta=5.0)
 
     def test_detect_ver_peaks_not_found_when_window_missing(self):
-        """If time axis doesn't cover the window, found should be False."""
-        t = np.linspace(0, 50, 100)  # only 0–50 ms, so N75 window 50–100 is at edge
+        """If time axis doesn't cover the 0–200ms window, found should be False."""
+        t = np.linspace(-100, -10, 100)  # only negative time values, no 0–200ms range
         epoch = np.zeros(100)
         peaks = detect_ver_peaks(epoch, t)
-        # P100 window is 80–130 ms, entirely outside 0–50 ms range → not found
-        self.assertFalse(peaks['P100']['found'])
-        self.assertTrue(np.isnan(peaks['P100']['latency_ms']))
+        # 0–200ms window is entirely outside the time axis → all not found
+        self.assertFalse(peaks['Peak-1']['found'])
+        self.assertTrue(np.isnan(peaks['Peak-1']['latency_ms']))
 
 
 if __name__ == "__main__":

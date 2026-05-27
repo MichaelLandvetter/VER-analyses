@@ -42,18 +42,18 @@ class VERDisplaySourceTests(unittest.TestCase):
     def test_session_average_supports_ver_peak_markers(self):
         self.assertIn("ver_peaks: Optional[dict] = None", self.source)
         self.assertIn('peak_styles = {', self.source)
-        self.assertIn('"N75": {"symbol": "t1", "color": "#4488FF"}', self.source)
-        self.assertIn('"P100": {"symbol": "t", "color": "#FF4444"}', self.source)
-        self.assertIn('"N135": {"symbol": "t1", "color": "#44FF88"}', self.source)
+        self.assertIn('"Peak-1": {"color": "#4488FF"}', self.source)
+        self.assertIn('"Peak-2": {"color": "#FF4444"}', self.source)
+        self.assertIn('"Peak-3": {"color": "#44FF88"}', self.source)
         self.assertIn("if math.isnan(marker_x) or math.isnan(marker_y):", self.source)
 
     def test_safe_default_plot_ranges_are_applied(self):
         self.assertIn("self.plot_sessions.setXRange(-100, 400, padding=0)", self.source)
-        self.assertIn("self.plot_sessions.setYRange(-1, 1, padding=0)", self.source)
+        self.assertIn("self.plot_sessions.enableAutoRange('y', True)", self.source)
         self.assertIn("self.plot_raw.enableAutoRange('x', True)", self.source)
         self.assertIn("self.plot_raw.setYRange(-1, 1, padding=0)", self.source)
         self.assertIn("self.plot_scope.setXRange(-50, 400, padding=0)", self.source)
-        self.assertIn("self.plot_scope.setYRange(-1, 1, padding=0)", self.source)
+        self.assertIn("self.plot_scope.enableAutoRange('y', True)", self.source)
         self.assertIn("self.plot_wavelet.setXRange(-50, 400, padding=0)", self.source)
         self.assertIn("self.plot_wavelet.setYRange(0, 50, padding=0)", self.source)
         self.assertIn("self._offset_step = None", self.source)
