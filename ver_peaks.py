@@ -17,6 +17,7 @@ class VERPeak(TypedDict):
 def detect_ver_peaks(epoch_avg: np.ndarray, epoch_time_ms: np.ndarray) -> dict[str, VERPeak]:
     """
     Detect the three largest peaks (any polarity) between 0 and 200ms post-stimulus.
+    Uses baseline correction and prominence/distance constraints for robustness.
     Returns Peak-1, Peak-2, Peak-3 sorted by latency (earliest first).
 
     Works for any species regardless of polarity convention.
@@ -34,16 +35,22 @@ def detect_ver_peaks(epoch_avg: np.ndarray, epoch_time_ms: np.ndarray) -> dict[s
     """
     empty = VERPeak(latency_ms=float('nan'), amplitude=float('nan'), found=False)
 
+    baseline_mask = (epoch_time_ms >= -100) & (epoch_time_ms < 0)
+    baseline = float(np.mean(epoch_avg[baseline_mask])) if np.any(baseline_mask) else 0.0
+
     mask = (epoch_time_ms >= 0) & (epoch_time_ms <= 200)
     if not np.any(mask):
         return {'Peak-1': empty, 'Peak-2': empty, 'Peak-3': empty}
 
-    segment = epoch_avg[mask]
+    segment = epoch_avg[mask] - baseline
     seg_times = epoch_time_ms[mask]
+    signal_range = float(np.max(segment) - np.min(segment))
+    min_prominence = max(0.1 * signal_range, 1e-10)
+    min_distance = 5
 
-    # Find local maxima and minima
-    pos_peaks, _ = find_peaks(segment)
-    neg_peaks, _ = find_peaks(-segment)
+    # Find robust local maxima and minima
+    pos_peaks, _ = find_peaks(segment, prominence=min_prominence, distance=min_distance)
+    neg_peaks, _ = find_peaks(-segment, prominence=min_prominence, distance=min_distance)
 
     all_peak_indices = np.concatenate([pos_peaks, neg_peaks])
 

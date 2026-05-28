@@ -17,7 +17,7 @@ class VERDisplaySourceTests(unittest.TestCase):
         self.assertNotIn("max(0.1 * filt_range, 0.5)", self.source)
 
     def test_sessions_panel_removes_legend_and_sets_fixed_x_range(self):
-        self.assertIn('self.plot_sessions.setXRange(-100, 400, padding=0)', self.source)
+        self.assertIn('self.plot_sessions.setXRange(-200, 400, padding=0)', self.source)
         self.assertNotIn("self.plot_sessions.addLegend()", self.source)
 
     def test_session_average_plot_has_no_legend_name(self):
@@ -48,13 +48,13 @@ class VERDisplaySourceTests(unittest.TestCase):
         self.assertIn("if math.isnan(marker_x) or math.isnan(marker_y):", self.source)
 
     def test_safe_default_plot_ranges_are_applied(self):
-        self.assertIn("self.plot_sessions.setXRange(-100, 400, padding=0)", self.source)
+        self.assertIn("self.plot_sessions.setXRange(-200, 400, padding=0)", self.source)
         self.assertIn("self.plot_sessions.enableAutoRange('y', True)", self.source)
         self.assertIn("self.plot_raw.enableAutoRange('x', True)", self.source)
         self.assertIn("self.plot_raw.setYRange(-1, 1, padding=0)", self.source)
-        self.assertIn("self.plot_scope.setXRange(-50, 400, padding=0)", self.source)
+        self.assertIn('self.plot_scope.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)', self.source)
         self.assertIn("self.plot_scope.enableAutoRange('y', True)", self.source)
-        self.assertIn("self.plot_wavelet.setXRange(-50, 400, padding=0)", self.source)
+        self.assertIn('self.plot_wavelet.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)', self.source)
         self.assertIn("self.plot_wavelet.setYRange(0, 50, padding=0)", self.source)
         self.assertIn("self._offset_step = None", self.source)
 
