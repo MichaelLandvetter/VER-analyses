@@ -38,6 +38,119 @@ class VERReportTests(unittest.TestCase):
             self.assertEqual(Path(result["pdf"]), expected_dir / "sample.pdf")
             self.assertTrue(input_file.exists())
 
+    def test_save_ver_report_creates_csv_files(self):
+        import csv as csv_mod
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            input_file = Path(tmp_dir) / "subject01.txt"
+            input_file.write_text("placeholder\n", encoding="utf-8")
+
+            epoch_time_ms = np.linspace(-100, 400, 126)
+            session_averages = [
+                np.sin(np.linspace(0, 3 * np.pi, epoch_time_ms.size)),
+                np.cos(np.linspace(0, 3 * np.pi, epoch_time_ms.size)),
+            ]
+            session_ver_peaks = [
+                {
+                    "Peak-1": {"found": True, "latency_ms": 75.0, "amplitude": -0.5},
+                    "Peak-2": {"found": True, "latency_ms": 100.0, "amplitude": 0.8},
+                    "Peak-3": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
+                },
+                {
+                    "Peak-1": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
+                    "Peak-2": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
+                    "Peak-3": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
+                },
+            ]
+            session_flash_counts = [120, 65]
+
+            result = save_ver_report(
+                str(input_file),
+                session_averages,
+                epoch_time_ms,
+                session_ver_peaks=session_ver_peaks,
+                session_flash_counts=session_flash_counts,
+            )
+
+            self.assertIsNotNone(result)
+            self.assertIn("summary_csv", result)
+            self.assertIn("waveforms_csv", result)
+
+            summary_path = Path(result["summary_csv"])
+            waveforms_path = Path(result["waveforms_csv"])
+            expected_dir = Path(tmp_dir) / "Reports" / "subject01"
+            self.assertEqual(summary_path, expected_dir / "subject01_summary.csv")
+            self.assertEqual(waveforms_path, expected_dir / "subject01_waveforms.csv")
+            self.assertTrue(summary_path.exists())
+            self.assertTrue(waveforms_path.exists())
+
+            # Verify summary CSV structure and content
+            with open(summary_path, encoding="utf-8", newline="") as f:
+                rows = list(csv_mod.reader(f))
+            self.assertEqual(rows[0], [
+                "Minute", "N_flashes", "Peak_power",
+                "Peak1_latency_ms", "Peak1_amplitude",
+                "Peak2_latency_ms", "Peak2_amplitude",
+                "Peak3_latency_ms", "Peak3_amplitude",
+            ])
+            self.assertEqual(len(rows), 3)  # header + 2 data rows
+            # Minute 1
+            self.assertEqual(rows[1][0], "1")
+            self.assertEqual(rows[1][1], "120")
+            self.assertNotEqual(rows[1][2], "")  # peak_power is present
+            self.assertEqual(rows[1][3], "75.0")  # Peak-1 latency
+            self.assertEqual(rows[1][5], "100.0")  # Peak-2 latency
+            self.assertEqual(rows[1][7], "")  # Peak-3 latency empty (not found)
+            # Minute 2
+            self.assertEqual(rows[2][0], "2")
+            self.assertEqual(rows[2][1], "65")
+            self.assertEqual(rows[2][3], "")  # Peak-1 latency empty (not found)
+
+            # Verify waveforms CSV structure and content
+            with open(waveforms_path, encoding="utf-8", newline="") as f:
+                wrows = list(csv_mod.reader(f))
+            self.assertEqual(wrows[0], ["Time_ms", "Minute_1", "Minute_2"])
+            self.assertEqual(len(wrows), epoch_time_ms.size + 1)  # header + one row per time point
+            # First time value should match epoch_time_ms[0]
+            self.assertAlmostEqual(float(wrows[1][0]), float(epoch_time_ms[0]), places=5)
+            # Two amplitude columns per row
+            self.assertEqual(len(wrows[1]), 3)
+
+    def test_save_ver_report_csv_missing_values_are_empty(self):
+        """NaN or missing peak values are written as empty strings, not 'nan'."""
+        import csv as csv_mod
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            input_file = Path(tmp_dir) / "test.txt"
+            input_file.write_text("placeholder\n", encoding="utf-8")
+
+            epoch_time_ms = np.linspace(-100, 400, 126)
+            session_averages = [np.zeros(epoch_time_ms.size)]
+            session_ver_peaks = [
+                {
+                    "Peak-1": {"found": True, "latency_ms": float("nan"), "amplitude": -0.5},
+                    "Peak-2": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
+                    "Peak-3": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
+                }
+            ]
+
+            result = save_ver_report(
+                str(input_file),
+                session_averages,
+                epoch_time_ms,
+                session_ver_peaks=session_ver_peaks,
+            )
+
+            with open(result["summary_csv"], encoding="utf-8", newline="") as f:
+                rows = list(csv_mod.reader(f))
+            # N_flashes not provided -> empty string
+            self.assertEqual(rows[1][1], "")
+            # Peak-1 latency is NaN -> empty string
+            self.assertEqual(rows[1][3], "")
+            # Peak-2 and Peak-3 not found -> empty string
+            self.assertEqual(rows[1][5], "")
+            self.assertEqual(rows[1][7], "")
+
     def test_save_ver_report_uses_sequential_minute_layout(self):
         import matplotlib.pyplot as plt
         from ver_report import _build_figures_page

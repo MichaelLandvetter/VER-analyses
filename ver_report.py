@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import math
 from pathlib import Path
 from typing import List, Optional
@@ -35,6 +36,7 @@ def save_ver_report(
     session_wavelet_freqs: Optional[np.ndarray] = None,
     session_labels: Optional[List[str]] = None,
     session_ver_peaks: Optional[List[dict]] = None,
+    session_flash_counts: Optional[List[Optional[int]]] = None,
 ) -> Optional[dict]:
     if not session_averages:
         return None
@@ -81,7 +83,78 @@ def save_ver_report(
     plt.close(fig1)
     plt.close(fig2)
 
-    return {"png": str(png_path), "pdf": str(pdf_path), "report_dir": str(report_dir)}
+    summary_path = report_dir / f"{stem}_summary.csv"
+    _write_summary_csv(summary_path, session_wavelets, session_wavelet_freqs, epoch_time_ms, session_ver_peaks, session_flash_counts)
+    print(f"Saved summary CSV: {summary_path}")
+
+    waveforms_path = report_dir / f"{stem}_waveforms.csv"
+    _write_waveforms_csv(waveforms_path, averages, epoch_time_ms)
+    print(f"Saved waveforms CSV: {waveforms_path}")
+
+    return {"png": str(png_path), "pdf": str(pdf_path), "report_dir": str(report_dir), "summary_csv": str(summary_path), "waveforms_csv": str(waveforms_path)}
+
+
+def _write_summary_csv(
+    path: Path,
+    session_wavelets: List[np.ndarray],
+    session_wavelet_freqs: np.ndarray,
+    epoch_time_ms: np.ndarray,
+    session_ver_peaks: Optional[List[dict]],
+    session_flash_counts: Optional[List[Optional[int]]],
+) -> None:
+    """Write per-minute summary statistics to a CSV file."""
+
+    def _peak_vals(ver_peaks, key):
+        if ver_peaks is None:
+            return "", ""
+        p = ver_peaks.get(key, {})
+        if p.get("found"):
+            lat = p["latency_ms"]
+            amp = p["amplitude"]
+            lat_val = "" if math.isnan(float(lat)) else lat
+            amp_val = "" if math.isnan(float(amp)) else amp
+            return lat_val, amp_val
+        return "", ""
+
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "Minute", "N_flashes", "Peak_power",
+            "Peak1_latency_ms", "Peak1_amplitude",
+            "Peak2_latency_ms", "Peak2_amplitude",
+            "Peak3_latency_ms", "Peak3_amplitude",
+        ])
+        for idx, wavelet in enumerate(session_wavelets):
+            peak_idx = np.unravel_index(np.argmax(wavelet), wavelet.shape)
+            peak_power = float(wavelet[peak_idx])
+
+            n_flashes = ""
+            if session_flash_counts and idx < len(session_flash_counts):
+                fc = session_flash_counts[idx]
+                if fc is not None:
+                    n_flashes = fc
+
+            ver_peaks = session_ver_peaks[idx] if session_ver_peaks and idx < len(session_ver_peaks) else None
+            p1_lat, p1_amp = _peak_vals(ver_peaks, "Peak-1")
+            p2_lat, p2_amp = _peak_vals(ver_peaks, "Peak-2")
+            p3_lat, p3_amp = _peak_vals(ver_peaks, "Peak-3")
+
+            writer.writerow([idx + 1, n_flashes, peak_power, p1_lat, p1_amp, p2_lat, p2_amp, p3_lat, p3_amp])
+
+
+def _write_waveforms_csv(
+    path: Path,
+    averages: np.ndarray,
+    epoch_time_ms: np.ndarray,
+) -> None:
+    """Write per-minute VER waveforms to a CSV file (one column per minute)."""
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        header = ["Time_ms"] + [f"Minute_{idx + 1}" for idx in range(len(averages))]
+        writer.writerow(header)
+        for t_idx, t in enumerate(epoch_time_ms):
+            row = [t] + [float(avg[t_idx]) for avg in averages]
+            writer.writerow(row)
 
 
 def _build_figures_page(

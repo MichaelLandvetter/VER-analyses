@@ -92,6 +92,7 @@ class VERMainWindow(QMainWindow):
         self.session_wavelet_freqs = None
         self.session_labels = []
         self.session_ver_peaks = []
+        self.session_flash_counts = []
         self._scope_panel_session = None
 
         self.bandpass = BandpassFilter()
@@ -282,6 +283,7 @@ class VERMainWindow(QMainWindow):
         self.session_wavelet_freqs = None
         self.session_labels = []
         self.session_ver_peaks = []
+        self.session_flash_counts = []
         self._scope_panel_session = None
         self.display.reset_all()
         self._set_progress(0, 0)
@@ -372,6 +374,7 @@ class VERMainWindow(QMainWindow):
 
         ver_peaks = detect_ver_peaks(session_avg, self.scope.epoch_time_ms)
         self.session_ver_peaks.append(ver_peaks)
+        self.session_flash_counts.append(flash_count)
 
         label = f"Minute {session_num}"
         if flash_count is not None and flash_count != EPOCH_CONFIG["flashes_per_session"]:
@@ -414,6 +417,7 @@ class VERMainWindow(QMainWindow):
             session_wavelet_freqs=self.session_wavelet_freqs,
             session_labels=self.session_labels if self.session_labels else None,
             session_ver_peaks=self.session_ver_peaks if self.session_ver_peaks else None,
+            session_flash_counts=self.session_flash_counts if self.session_flash_counts else None,
         )
         if result is None:
             QMessageBox.information(self, "No data", "No completed minutes available yet.")
