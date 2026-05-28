@@ -111,8 +111,8 @@ def _write_summary_csv(
         if p.get("found"):
             lat = p["latency_ms"]
             amp = p["amplitude"]
-            lat_val = "" if math.isnan(float(lat)) else lat
-            amp_val = "" if math.isnan(float(amp)) else amp
+            lat_val = "" if math.isnan(lat) else lat
+            amp_val = "" if math.isnan(amp) else amp
             return lat_val, amp_val
         return "", ""
 

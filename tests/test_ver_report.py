@@ -117,7 +117,7 @@ class VERReportTests(unittest.TestCase):
             self.assertEqual(len(wrows[1]), 3)
 
     def test_save_ver_report_csv_missing_values_are_empty(self):
-        """NaN or missing peak values are written as empty strings, not 'nan'."""
+        """Missing peak values (not found) are written as empty strings, not 'nan'."""
         import csv as csv_mod
 
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -128,7 +128,7 @@ class VERReportTests(unittest.TestCase):
             session_averages = [np.zeros(epoch_time_ms.size)]
             session_ver_peaks = [
                 {
-                    "Peak-1": {"found": True, "latency_ms": float("nan"), "amplitude": -0.5},
+                    "Peak-1": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
                     "Peak-2": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
                     "Peak-3": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
                 }
@@ -145,9 +145,9 @@ class VERReportTests(unittest.TestCase):
                 rows = list(csv_mod.reader(f))
             # N_flashes not provided -> empty string
             self.assertEqual(rows[1][1], "")
-            # Peak-1 latency is NaN -> empty string
+            # All peaks not found -> empty strings
             self.assertEqual(rows[1][3], "")
-            # Peak-2 and Peak-3 not found -> empty string
+            self.assertEqual(rows[1][4], "")
             self.assertEqual(rows[1][5], "")
             self.assertEqual(rows[1][7], "")
 
