@@ -7,6 +7,8 @@ from typing import TypedDict
 import numpy as np
 from scipy.signal import find_peaks
 
+from ver_config import EPOCH_CONFIG
+
 
 class VERPeak(TypedDict):
     latency_ms: float   # time in ms where peak occurs
@@ -35,7 +37,8 @@ def detect_ver_peaks(epoch_avg: np.ndarray, epoch_time_ms: np.ndarray) -> dict[s
     """
     empty = VERPeak(latency_ms=float('nan'), amplitude=float('nan'), found=False)
 
-    baseline_mask = (epoch_time_ms >= -100) & (epoch_time_ms < 0)
+    # pre_stim_ms is stored as a positive duration; negate it to get the start of pre-stimulus time.
+    baseline_mask = (epoch_time_ms >= -EPOCH_CONFIG["pre_stim_ms"]) & (epoch_time_ms < 0)
     baseline = float(np.mean(epoch_avg[baseline_mask])) if np.any(baseline_mask) else 0.0
 
     mask = (epoch_time_ms >= 0) & (epoch_time_ms <= 200)
@@ -45,7 +48,10 @@ def detect_ver_peaks(epoch_avg: np.ndarray, epoch_time_ms: np.ndarray) -> dict[s
     segment = epoch_avg[mask] - baseline
     seg_times = epoch_time_ms[mask]
     signal_range = float(np.max(segment) - np.min(segment))
+    # Require peaks to stand out by at least 10% of segment range.
+    # 1e-10 prevents zero-prominence calls for near-flat numeric input; it has no physiological meaning.
     min_prominence = max(0.1 * signal_range, 1e-10)
+    # Keep detected peaks at least ~20ms apart at 250Hz (5 samples).
     min_distance = 5
 
     # Find robust local maxima and minima
