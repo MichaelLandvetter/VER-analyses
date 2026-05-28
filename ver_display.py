@@ -52,7 +52,7 @@ class VERDisplayWidget(QWidget):
         self.plot_sessions.setLabel("bottom", "Time", "ms")
         self.plot_sessions.setLabel("left", "Minute")
         self.plot_sessions.setTitle("VER Evolution — Minute by Minute")
-        self.plot_sessions.setXRange(-100, 400, padding=0)
+        self.plot_sessions.setXRange(-200, 400, padding=0)
         self.plot_sessions.enableAutoRange('y', True)
         self.plot_sessions.getAxis("left").setTicks([[]])
         self._offset_step = None
@@ -273,7 +273,7 @@ class VERDisplayWidget(QWidget):
         self._reset_sessions_panel()
         self.plot_raw.enableAutoRange('x', True)
         self.plot_raw.setYRange(-1, 1, padding=0)
-        self.plot_scope.setXRange(-50, 400, padding=0)
+        self.plot_scope.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)
         self.plot_scope.enableAutoRange('y', True)
-        self.plot_wavelet.setXRange(-50, 400, padding=0)
+        self.plot_wavelet.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)
         self.plot_wavelet.setYRange(0, 50, padding=0)

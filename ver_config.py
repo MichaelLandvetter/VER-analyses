@@ -41,7 +41,7 @@ FILTER_CONFIG = {
 }
 
 EPOCH_CONFIG = {
-    "pre_stim_ms": 50,   # fish VER uses -50 ms pre-stimulus window
+    "pre_stim_ms": 100,  # fish VER uses -100 ms pre-stimulus window
     "post_stim_ms": 400,
     "flashes_per_session": 120,  # flashes collected per minute
     "num_sessions": 10,          # kept as key name for compatibility; displayed as minutes

@@ -174,6 +174,26 @@ class VERProcessingTests(unittest.TestCase):
         self.assertFalse(peaks['Peak-1']['found'])
         self.assertTrue(np.isnan(peaks['Peak-1']['latency_ms']))
 
+    def test_detect_ver_peaks_applies_minus_100_to_0_baseline(self):
+        """Peaks should be reported relative to mean baseline in -100..0ms."""
+        sample_rate = 250.0
+        t = np.arange(-100, 300, 1000.0 / sample_rate)
+        baseline_offset = 5.0
+        epoch = (
+            baseline_offset
+            + 1.0 * np.exp(-((t - 70) ** 2) / (2 * 8 ** 2))
+            - 1.2 * np.exp(-((t - 110) ** 2) / (2 * 8 ** 2))
+            + 0.8 * np.exp(-((t - 150) ** 2) / (2 * 8 ** 2))
+        )
+        peaks = detect_ver_peaks(epoch, t)
+
+        self.assertAlmostEqual(peaks['Peak-1']['latency_ms'], 70.0, delta=6.0)
+        self.assertAlmostEqual(peaks['Peak-2']['latency_ms'], 110.0, delta=6.0)
+        self.assertAlmostEqual(peaks['Peak-3']['latency_ms'], 150.0, delta=6.0)
+        self.assertAlmostEqual(peaks['Peak-1']['amplitude'], 1.0, delta=0.25)
+        self.assertAlmostEqual(peaks['Peak-2']['amplitude'], -1.2, delta=0.25)
+        self.assertAlmostEqual(peaks['Peak-3']['amplitude'], 0.8, delta=0.25)
+
 
 if __name__ == "__main__":
     unittest.main()
