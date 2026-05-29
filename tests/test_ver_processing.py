@@ -194,6 +194,36 @@ class VERProcessingTests(unittest.TestCase):
         self.assertAlmostEqual(peaks['Peak-2']['amplitude'], -1.2, delta=0.25)
         self.assertAlmostEqual(peaks['Peak-3']['amplitude'], 0.8, delta=0.25)
 
+    def test_detect_ver_peaks_adds_snr_and_ver_detected(self):
+        t = np.arange(-100, 300, 4.0)
+        epoch = (
+            0.05 * np.sin(2 * np.pi * t / 30.0)
+            + 2.0 * np.exp(-((t - 90) ** 2) / (2 * 7 ** 2))
+            - 1.5 * np.exp(-((t - 130) ** 2) / (2 * 9 ** 2))
+        )
+        peaks = detect_ver_peaks(epoch, t)
+
+        self.assertGreater(peaks["noise_rms"], 0.0)
+        self.assertTrue(peaks["VER_detected"])
+        self.assertTrue(peaks["Peak-1"]["found"])
+        self.assertIn("snr", peaks["Peak-1"])
+        self.assertIn("above_threshold", peaks["Peak-1"])
+        self.assertTrue(any(peaks[name]["above_threshold"] for name in ("Peak-1", "Peak-2", "Peak-3")))
+
+    def test_detect_ver_peaks_marks_no_ver_for_noise_only(self):
+        rng = np.random.default_rng(7)
+        t = np.arange(-100, 300, 4.0)
+        epoch = np.zeros(t.size)
+        baseline_mask = (t >= -100) & (t < 0)
+        post_mask = (t >= 0) & (t <= 200)
+        epoch[baseline_mask] = 0.2 * rng.standard_normal(np.count_nonzero(baseline_mask))
+        epoch[post_mask] = 0.01 * rng.standard_normal(np.count_nonzero(post_mask))
+        peaks = detect_ver_peaks(epoch, t)
+
+        self.assertFalse(peaks["VER_detected"])
+        self.assertGreater(peaks["noise_rms"], 0.0)
+        self.assertFalse(any(peaks[name]["above_threshold"] for name in ("Peak-1", "Peak-2", "Peak-3")))
+
 
 if __name__ == "__main__":
     unittest.main()

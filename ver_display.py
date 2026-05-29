@@ -233,15 +233,25 @@ class VERDisplayWidget(QWidget):
                     if math.isnan(marker_x) or math.isnan(marker_y):
                         continue
                     symbol = 't' if peak["amplitude"] >= 0 else 't1'
+                    if peak.get("above_threshold", False):
+                        brush = pg.mkBrush(style["color"])
+                        pen = pg.mkPen(None)
+                    else:
+                        brush = pg.mkBrush(None)
+                        pen = pg.mkPen("#888888", width=1)
                     scatter = pg.ScatterPlotItem(
                         x=[marker_x],
                         y=[marker_y],
                         symbol=symbol,
                         size=10,
-                        brush=pg.mkBrush(style["color"]),
-                        pen=pg.mkPen(None),
+                        brush=brush,
+                        pen=pen,
                     )
                     self.plot_sessions.addItem(scatter)
+            if not ver_peaks.get("VER_detected", True):
+                no_ver_text = pg.TextItem("No VER", color="#888888", anchor=(0.0, 0.5))
+                no_ver_text.setPos(5.0, offset)
+                self.plot_sessions.addItem(no_ver_text)
         text = pg.TextItem(label_text, color=color, anchor=(1, 0.5))
         text.setPos(float(epoch_time_ms[0]) - 5.0, offset)
         self.plot_sessions.addItem(text)

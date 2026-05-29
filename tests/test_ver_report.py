@@ -52,14 +52,18 @@ class VERReportTests(unittest.TestCase):
             ]
             session_ver_peaks = [
                 {
-                    "Peak-1": {"found": True, "latency_ms": 75.0, "amplitude": -0.5},
-                    "Peak-2": {"found": True, "latency_ms": 100.0, "amplitude": 0.8},
-                    "Peak-3": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
+                    "Peak-1": {"found": True, "latency_ms": 75.0, "amplitude": -0.5, "snr": 2.4, "above_threshold": True},
+                    "Peak-2": {"found": True, "latency_ms": 100.0, "amplitude": 0.8, "snr": 3.1, "above_threshold": True},
+                    "Peak-3": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan"), "snr": float("nan"), "above_threshold": False},
+                    "VER_detected": True,
+                    "noise_rms": 0.2,
                 },
                 {
-                    "Peak-1": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
-                    "Peak-2": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
-                    "Peak-3": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
+                    "Peak-1": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan"), "snr": float("nan"), "above_threshold": False},
+                    "Peak-2": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan"), "snr": float("nan"), "above_threshold": False},
+                    "Peak-3": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan"), "snr": float("nan"), "above_threshold": False},
+                    "VER_detected": False,
+                    "noise_rms": 0.3,
                 },
             ]
             session_flash_counts = [120, 65]
@@ -88,23 +92,26 @@ class VERReportTests(unittest.TestCase):
             with open(summary_path, encoding="utf-8", newline="") as f:
                 rows = list(csv_mod.reader(f))
             self.assertEqual(rows[0], [
-                "Minute", "N_flashes", "Peak_power",
-                "Peak1_latency_ms", "Peak1_amplitude",
-                "Peak2_latency_ms", "Peak2_amplitude",
-                "Peak3_latency_ms", "Peak3_amplitude",
+                "Minute", "N_flashes", "Peak_power", "VER_detected", "Noise_RMS",
+                "Peak1_latency_ms", "Peak1_amplitude", "Peak1_SNR",
+                "Peak2_latency_ms", "Peak2_amplitude", "Peak2_SNR",
+                "Peak3_latency_ms", "Peak3_amplitude", "Peak3_SNR",
             ])
             self.assertEqual(len(rows), 3)  # header + 2 data rows
             # Minute 1
             self.assertEqual(rows[1][0], "1")
             self.assertEqual(rows[1][1], "120")
             self.assertNotEqual(rows[1][2], "")  # peak_power is present
-            self.assertEqual(rows[1][3], "75.0")  # Peak-1 latency
-            self.assertEqual(rows[1][5], "100.0")  # Peak-2 latency
-            self.assertEqual(rows[1][7], "")  # Peak-3 latency empty (not found)
+            self.assertEqual(rows[1][3], "True")
+            self.assertEqual(rows[1][4], "0.2")
+            self.assertEqual(rows[1][5], "75.0")  # Peak-1 latency
+            self.assertEqual(rows[1][8], "100.0")  # Peak-2 latency
+            self.assertEqual(rows[1][11], "")  # Peak-3 latency empty (not found)
             # Minute 2
             self.assertEqual(rows[2][0], "2")
             self.assertEqual(rows[2][1], "65")
-            self.assertEqual(rows[2][3], "")  # Peak-1 latency empty (not found)
+            self.assertEqual(rows[2][3], "False")
+            self.assertEqual(rows[2][5], "")  # Peak-1 latency empty (not found)
 
             # Verify waveforms CSV structure and content
             with open(waveforms_path, encoding="utf-8", newline="") as f:
@@ -128,9 +135,11 @@ class VERReportTests(unittest.TestCase):
             session_averages = [np.zeros(epoch_time_ms.size)]
             session_ver_peaks = [
                 {
-                    "Peak-1": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
-                    "Peak-2": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
-                    "Peak-3": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan")},
+                    "Peak-1": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan"), "snr": float("nan"), "above_threshold": False},
+                    "Peak-2": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan"), "snr": float("nan"), "above_threshold": False},
+                    "Peak-3": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan"), "snr": float("nan"), "above_threshold": False},
+                    "VER_detected": False,
+                    "noise_rms": 0.1,
                 }
             ]
 
@@ -146,10 +155,11 @@ class VERReportTests(unittest.TestCase):
             # N_flashes not provided -> empty string
             self.assertEqual(rows[1][1], "")
             # All peaks not found -> empty strings
-            self.assertEqual(rows[1][3], "")
-            self.assertEqual(rows[1][4], "")
+            self.assertEqual(rows[1][3], "False")
             self.assertEqual(rows[1][5], "")
-            self.assertEqual(rows[1][7], "")
+            self.assertEqual(rows[1][6], "")
+            self.assertEqual(rows[1][8], "")
+            self.assertEqual(rows[1][11], "")
 
     def test_save_ver_report_uses_sequential_minute_layout(self):
         import matplotlib.pyplot as plt
@@ -254,6 +264,36 @@ class VERReportTests(unittest.TestCase):
             self.assertTrue(np.all(np.isfinite(line.get_xdata())))
             self.assertTrue(np.all(np.isfinite(line.get_ydata())))
 
+        plt.close(fig)
+
+    def test_stats_table_includes_ver_column_and_snr_text(self):
+        import matplotlib.pyplot as plt
+        from ver_report import _build_stats_table_page
+
+        session_wavelets = [np.ones((3, 4))]
+        session_wavelet_freqs = np.array([5.0, 10.0, 15.0])
+        epoch_time_ms = np.array([-100.0, 0.0, 100.0, 200.0])
+        labels = ["Minute 1"]
+        session_ver_peaks = [{
+            "Peak-1": {"found": True, "latency_ms": 70.0, "amplitude": 0.5, "snr": 2.5, "above_threshold": True},
+            "Peak-2": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan"), "snr": float("nan"), "above_threshold": False},
+            "Peak-3": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan"), "snr": float("nan"), "above_threshold": False},
+            "VER_detected": True,
+            "noise_rms": 0.2,
+        }]
+
+        fig = _build_stats_table_page(
+            session_wavelets,
+            session_wavelet_freqs,
+            epoch_time_ms,
+            labels,
+            session_ver_peaks=session_ver_peaks,
+        )
+
+        table = fig.axes[0].tables[0]
+        self.assertEqual(table.get_celld()[(0, 2)].get_text().get_text(), "VER?")
+        self.assertEqual(table.get_celld()[(1, 2)].get_text().get_text(), "Yes")
+        self.assertEqual(table.get_celld()[(1, 4)].get_text().get_text(), "0.5000 (SNR=2.5)")
         plt.close(fig)
 
 

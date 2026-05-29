@@ -14,9 +14,11 @@ class VERPeak(TypedDict):
     latency_ms: float   # time in ms where peak occurs
     amplitude: float    # amplitude value at the peak
     found: bool         # False if no clear peak found in window
+    snr: float
+    above_threshold: bool
 
 
-def detect_ver_peaks(epoch_avg: np.ndarray, epoch_time_ms: np.ndarray) -> dict[str, VERPeak]:
+def detect_ver_peaks(epoch_avg: np.ndarray, epoch_time_ms: np.ndarray) -> dict[str, object]:
     """
     Detect the three largest peaks (any polarity) between 0 and 200ms post-stimulus.
     Uses baseline correction and prominence/distance constraints for robustness.
@@ -33,17 +35,29 @@ def detect_ver_peaks(epoch_avg: np.ndarray, epoch_time_ms: np.ndarray) -> dict[s
 
     Returns
     -------
-    dict with keys 'Peak-1', 'Peak-2', 'Peak-3', each a VERPeak dict
+    dict with Peak-1/2/3 plus SNR flags, VER_detected and noise_rms
     """
-    empty = VERPeak(latency_ms=float('nan'), amplitude=float('nan'), found=False)
+    empty = VERPeak(latency_ms=float('nan'), amplitude=float('nan'), found=False, snr=float('nan'), above_threshold=False)
 
     # pre_stim_ms is stored as a positive duration; negate it to get the start of pre-stimulus time.
     baseline_mask = (epoch_time_ms >= -EPOCH_CONFIG["pre_stim_ms"]) & (epoch_time_ms < 0)
     baseline = float(np.mean(epoch_avg[baseline_mask])) if np.any(baseline_mask) else 0.0
 
+    # Estimate baseline noise using fixed -100 to 0ms window.
+    noise_mask = (epoch_time_ms >= -100) & (epoch_time_ms < 0)
+    baseline_segment = epoch_avg[noise_mask]
+    noise_rms = float(np.sqrt(np.mean(baseline_segment ** 2))) if np.any(noise_mask) else 1e-10
+    noise_rms = max(noise_rms, 1e-10)
+
     mask = (epoch_time_ms >= 0) & (epoch_time_ms <= 200)
     if not np.any(mask):
-        return {'Peak-1': empty, 'Peak-2': empty, 'Peak-3': empty}
+        return {
+            'Peak-1': empty.copy(),
+            'Peak-2': empty.copy(),
+            'Peak-3': empty.copy(),
+            'VER_detected': False,
+            'noise_rms': noise_rms,
+        }
 
     segment = epoch_avg[mask] - baseline
     seg_times = epoch_time_ms[mask]
@@ -73,7 +87,7 @@ def detect_ver_peaks(epoch_avg: np.ndarray, epoch_time_ms: np.ndarray) -> dict[s
     # Sort by latency (time order)
     top3_sorted = sorted(top3, key=lambda i: seg_times[i])
 
-    result: dict[str, VERPeak] = {}
+    result: dict[str, object] = {}
     peak_names = ['Peak-1', 'Peak-2', 'Peak-3']
     for i, name in enumerate(peak_names):
         if i < len(top3_sorted):
@@ -84,6 +98,15 @@ def detect_ver_peaks(epoch_avg: np.ndarray, epoch_time_ms: np.ndarray) -> dict[s
                 found=True,
             )
         else:
-            result[name] = empty
+            result[name] = empty.copy()
+
+    for name in peak_names:
+        if result[name]["found"]:
+            snr = abs(result[name]["amplitude"]) / noise_rms
+            result[name]["snr"] = snr
+            result[name]["above_threshold"] = snr >= 2.0
+
+    result["VER_detected"] = any(result[name]["above_threshold"] for name in peak_names)
+    result["noise_rms"] = noise_rms
 
     return result
