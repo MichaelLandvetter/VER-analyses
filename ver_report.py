@@ -106,23 +106,25 @@ def _write_summary_csv(
 
     def _peak_vals(ver_peaks, key):
         if ver_peaks is None:
-            return "", ""
+            return "", "", ""
         p = ver_peaks.get(key, {})
         if p.get("found"):
             lat = p["latency_ms"]
             amp = p["amplitude"]
+            snr = p.get("snr", float("nan"))
             lat_val = "" if math.isnan(lat) else lat
             amp_val = "" if math.isnan(amp) else amp
-            return lat_val, amp_val
-        return "", ""
+            snr_val = "" if math.isnan(snr) else snr
+            return lat_val, amp_val, snr_val
+        return "", "", ""
 
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow([
-            "Minute", "N_flashes", "Peak_power",
-            "Peak1_latency_ms", "Peak1_amplitude",
-            "Peak2_latency_ms", "Peak2_amplitude",
-            "Peak3_latency_ms", "Peak3_amplitude",
+            "Minute", "N_flashes", "Peak_power", "VER_detected", "Noise_RMS",
+            "Peak1_latency_ms", "Peak1_amplitude", "Peak1_SNR",
+            "Peak2_latency_ms", "Peak2_amplitude", "Peak2_SNR",
+            "Peak3_latency_ms", "Peak3_amplitude", "Peak3_SNR",
         ])
         for idx, wavelet in enumerate(session_wavelets):
             peak_idx = np.unravel_index(np.argmax(wavelet), wavelet.shape)
@@ -135,11 +137,23 @@ def _write_summary_csv(
                     n_flashes = fc
 
             ver_peaks = session_ver_peaks[idx] if session_ver_peaks and idx < len(session_ver_peaks) else None
-            p1_lat, p1_amp = _peak_vals(ver_peaks, "Peak-1")
-            p2_lat, p2_amp = _peak_vals(ver_peaks, "Peak-2")
-            p3_lat, p3_amp = _peak_vals(ver_peaks, "Peak-3")
+            p1_lat, p1_amp, p1_snr = _peak_vals(ver_peaks, "Peak-1")
+            p2_lat, p2_amp, p2_snr = _peak_vals(ver_peaks, "Peak-2")
+            p3_lat, p3_amp, p3_snr = _peak_vals(ver_peaks, "Peak-3")
+            ver_detected = ""
+            noise_rms = ""
+            if ver_peaks is not None:
+                ver_detected = "True" if ver_peaks.get("VER_detected", False) else "False"
+                noise = ver_peaks.get("noise_rms", float("nan"))
+                if isinstance(noise, (int, float)):
+                    noise_rms = "" if math.isnan(noise) else noise
 
-            writer.writerow([idx + 1, n_flashes, peak_power, p1_lat, p1_amp, p2_lat, p2_amp, p3_lat, p3_amp])
+            writer.writerow([
+                idx + 1, n_flashes, peak_power, ver_detected, noise_rms,
+                p1_lat, p1_amp, p1_snr,
+                p2_lat, p2_amp, p2_snr,
+                p3_lat, p3_amp, p3_snr,
+            ])
 
 
 def _write_waveforms_csv(
@@ -272,7 +286,7 @@ def _build_stats_table_page(
     ax.set_title("VER Analysis — Peak Statistics", fontsize=14, fontweight="bold", pad=20)
 
     col_labels = [
-        "Minute", "Label",
+        "Minute", "Label", "VER?",
         "Peak-1 Latency (ms)", "Peak-1 Amp",
         "Peak-2 Latency (ms)", "Peak-2 Amp",
         "Peak-3 Latency (ms)", "Peak-3 Amp",
@@ -290,17 +304,23 @@ def _build_stats_table_page(
                 return "\u2014", "\u2014"
             p = peaks.get(key, {})
             if p.get('found'):
-                return f"{p['latency_ms']:.0f}", f"{p['amplitude']:.4f}"
+                snr = p.get("snr", float("nan"))
+                amp = f"{p['amplitude']:.4f}"
+                if isinstance(snr, (int, float)) and not math.isnan(snr):
+                    amp = f"{amp} (SNR={snr:.1f})"
+                return f"{p['latency_ms']:.0f}", amp
             return "\u2014", "\u2014"
 
         ver_peaks = session_ver_peaks[idx] if session_ver_peaks and idx < len(session_ver_peaks) else None
         p1_lat, p1_amp = _fmt_peak(ver_peaks, 'Peak-1')
         p2_lat, p2_amp = _fmt_peak(ver_peaks, 'Peak-2')
         p3_lat, p3_amp = _fmt_peak(ver_peaks, 'Peak-3')
+        ver_label = "\u2014" if ver_peaks is None else ("Yes" if ver_peaks.get("VER_detected", False) else "No")
 
         rows.append([
             str(idx + 1),
             labels[idx] if idx < len(labels) else f"Minute {idx + 1}",
+            ver_label,
             p1_lat, p1_amp,
             p2_lat, p2_amp,
             p3_lat, p3_amp,

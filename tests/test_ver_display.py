@@ -46,6 +46,11 @@ class VERDisplaySourceTests(unittest.TestCase):
         self.assertIn('"Peak-2": {"color": "#FF4444"}', self.source)
         self.assertIn('"Peak-3": {"color": "#44FF88"}', self.source)
         self.assertIn("if math.isnan(marker_x) or math.isnan(marker_y):", self.source)
+        self.assertIn('if peak.get("above_threshold", False):', self.source)
+        self.assertIn('brush = pg.mkBrush(None)', self.source)
+        self.assertIn('pen = pg.mkPen("#888888", width=1)', self.source)
+        self.assertIn('if not ver_peaks.get("VER_detected", False):', self.source)
+        self.assertIn('pg.TextItem("No VER", color="#888888", anchor=(0.0, 0.5))', self.source)
 
     def test_safe_default_plot_ranges_are_applied(self):
         self.assertIn("self.plot_sessions.setXRange(-200, 400, padding=0)", self.source)
