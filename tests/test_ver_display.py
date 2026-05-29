@@ -49,7 +49,7 @@ class VERDisplaySourceTests(unittest.TestCase):
         self.assertIn('if peak.get("above_threshold", False):', self.source)
         self.assertIn('brush = pg.mkBrush(None)', self.source)
         self.assertIn('pen = pg.mkPen("#888888", width=1)', self.source)
-        self.assertIn('if not ver_peaks.get("VER_detected", True):', self.source)
+        self.assertIn('if not ver_peaks.get("VER_detected", False):', self.source)
         self.assertIn('pg.TextItem("No VER", color="#888888", anchor=(0.0, 0.5))', self.source)
 
     def test_safe_default_plot_ranges_are_applied(self):

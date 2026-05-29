@@ -248,7 +248,7 @@ class VERDisplayWidget(QWidget):
                         pen=pen,
                     )
                     self.plot_sessions.addItem(scatter)
-            if not ver_peaks.get("VER_detected", True):
+            if not ver_peaks.get("VER_detected", False):
                 no_ver_text = pg.TextItem("No VER", color="#888888", anchor=(0.0, 0.5))
                 no_ver_text.setPos(5.0, offset)
                 self.plot_sessions.addItem(no_ver_text)

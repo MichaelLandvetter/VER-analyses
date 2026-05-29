@@ -140,12 +140,13 @@ def _write_summary_csv(
             p1_lat, p1_amp, p1_snr = _peak_vals(ver_peaks, "Peak-1")
             p2_lat, p2_amp, p2_snr = _peak_vals(ver_peaks, "Peak-2")
             p3_lat, p3_amp, p3_snr = _peak_vals(ver_peaks, "Peak-3")
-            ver_detected = "" if ver_peaks is None else bool(ver_peaks.get("VER_detected", False))
+            ver_detected = ""
             noise_rms = ""
             if ver_peaks is not None:
+                ver_detected = "True" if ver_peaks.get("VER_detected", False) else "False"
                 noise = ver_peaks.get("noise_rms", float("nan"))
                 if isinstance(noise, (int, float)):
-                    noise_rms = "" if math.isnan(float(noise)) else float(noise)
+                    noise_rms = "" if math.isnan(noise) else noise
 
             writer.writerow([
                 idx + 1, n_flashes, peak_power, ver_detected, noise_rms,
@@ -305,8 +306,8 @@ def _build_stats_table_page(
             if p.get('found'):
                 snr = p.get("snr", float("nan"))
                 amp = f"{p['amplitude']:.4f}"
-                if isinstance(snr, (int, float)) and not math.isnan(float(snr)):
-                    amp = f"{amp} (SNR={float(snr):.1f})"
+                if isinstance(snr, (int, float)) and not math.isnan(snr):
+                    amp = f"{amp} (SNR={snr:.1f})"
                 return f"{p['latency_ms']:.0f}", amp
             return "\u2014", "\u2014"
 

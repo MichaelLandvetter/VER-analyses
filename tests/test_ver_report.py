@@ -291,9 +291,12 @@ class VERReportTests(unittest.TestCase):
         )
 
         table = fig.axes[0].tables[0]
-        self.assertEqual(table.get_celld()[(0, 2)].get_text().get_text(), "VER?")
-        self.assertEqual(table.get_celld()[(1, 2)].get_text().get_text(), "Yes")
-        self.assertEqual(table.get_celld()[(1, 4)].get_text().get_text(), "0.5000 (SNR=2.5)")
+        header_cols = sorted(col for (row, col) in table.get_celld() if row == 0)
+        headers = {table.get_celld()[(0, col)].get_text().get_text(): col for col in header_cols}
+        self.assertIn("VER?", headers)
+        self.assertIn("Peak-1 Amp", headers)
+        self.assertEqual(table.get_celld()[(1, headers["VER?"])].get_text().get_text(), "Yes")
+        self.assertEqual(table.get_celld()[(1, headers["Peak-1 Amp"])].get_text().get_text(), "0.5000 (SNR=2.5)")
         plt.close(fig)
 
 
