@@ -39,8 +39,9 @@ def välj_och_kör():
 
 # --- Skapa huvudfönstret ---
 root = Tk()
-root.title("ver-downsampling")
+root.title("ver_downsampling")
 root.geometry("400x200")  # Sätter storleken på fönstret (bredd x höjd)
+root.configure(bg='white')
 
 # 1. Förklaringstext (Här kan du skriva vad du vill)
 förklaring = (
@@ -51,8 +52,8 @@ förklaring = (
 )
 
 lbl_text = Label(
-    root, text=förklaring, justify="left", wraplength=360, padx=20, pady=20
-)
+    root, text=förklaring, justify="left", wraplength=360, padx=20, pady=20,
+bg="white")
 lbl_text.pack()
 
 # 2. Knapp för att välja fil och köra programmet
