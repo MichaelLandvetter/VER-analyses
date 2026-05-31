@@ -18,6 +18,16 @@ class VERMainSourceTests(unittest.TestCase):
         self.assertIn("downsample_action.triggered.connect(self._on_downsample)", self.source)
         self.assertIn("def _on_downsample(self):", self.source)
 
+    def test_downsample_opens_reusable_dialog(self):
+        self.assertIn("class DownsampleDialog(QDialog):", self.source)
+        self.assertIn("def _select_and_downsample(self):", self.source)
+        self.assertIn("def _on_downsample(self):", self.source)
+        self.assertIn("DownsampleDialog(self)", self.source)
+        self.assertIn("dlg.exec()", self.source)
+
+    def test_no_startup_file_prompt(self):
+        self.assertNotIn("self._select_data_file(initial=True)", self.source)
+
     def test_downsample_helper_uses_decimate(self):
         self.assertIn("def downsample_labchart_file(input_filepath: str) -> str:", self.source)
         self.assertIn("from scipy.signal import decimate", self.source)
