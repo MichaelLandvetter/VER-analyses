@@ -7,8 +7,8 @@ import time
 from pathlib import Path
 
 import numpy as np
-from PyQt6.QtCore import QObject, QThread, pyqtSignal
-from PyQt6.QtGui import QAction
+from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal
+from PyQt6.QtGui import QAction, QTextOption
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QTextBrowser,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -103,8 +104,7 @@ class DownsampleDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Downsample LabChart File")
-        self.setMinimumWidth(480)
-        self.setMinimumHeight(220)
+        self.setFixedSize(560, 300)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
@@ -126,14 +126,21 @@ class DownsampleDialog(QDialog):
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(self.close)
         layout.addWidget(close_btn)
+        layout.addStretch(1)
 
         separator = QFrame()
         separator.setFrameShape(QFrame.Shape.HLine)
         separator.setFrameShadow(QFrame.Shadow.Sunken)
         layout.addWidget(separator)
 
-        self._status_label = QLabel("")
-        self._status_label.setWordWrap(True)
+        status_title = QLabel("Status")
+        layout.addWidget(status_title)
+
+        self._status_label = QTextBrowser()
+        self._status_label.setReadOnly(True)
+        self._status_label.setWordWrapMode(QTextOption.WrapMode.WrapAnywhere)
+        self._status_label.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._status_label.setFixedHeight(58)
         layout.addWidget(self._status_label)
 
     def _select_and_downsample(self):
@@ -147,7 +154,7 @@ class DownsampleDialog(QDialog):
             return
         try:
             output_path = downsample_labchart_file(input_filepath)
-            self._status_label.setText(f"Saved: {output_path}")
+            self._status_label.setPlainText(f"Saved: {output_path}")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Downsampling failed:\n{e}")
 

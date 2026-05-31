@@ -25,6 +25,15 @@ class VERMainSourceTests(unittest.TestCase):
         self.assertIn("DownsampleDialog(self)", self.source)
         self.assertIn("dlg.exec()", self.source)
 
+    def test_downsample_dialog_has_fixed_status_area(self):
+        self.assertIn("self.setFixedSize(560, 300)", self.source)
+        self.assertIn("layout.addStretch(1)", self.source)
+        self.assertIn('status_title = QLabel("Status")', self.source)
+        self.assertIn("self._status_label = QTextBrowser()", self.source)
+        self.assertIn("self._status_label.setWordWrapMode(QTextOption.WrapMode.WrapAnywhere)", self.source)
+        self.assertIn("self._status_label.setFixedHeight(58)", self.source)
+        self.assertIn('self._status_label.setPlainText(f"Saved: {output_path}")', self.source)
+
     def test_no_startup_file_prompt(self):
         self.assertNotIn("self._select_data_file(initial=True)", self.source)
 
