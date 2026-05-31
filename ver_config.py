@@ -5,15 +5,6 @@ ACQ_CONFIG = {
     "simulate_realtime": True,
 }
 
-FILE_CONFIG = {
-    "delimiter": "\t",
-    "trigger_column": 0,
-    "eeg_column": 2,
-    "skip_header": 0,
-    "trigger_mode": "threshold",
-    "trigger_threshold": 0.5,
-}
-
 FILE_FORMATS = {
     "SD-card": {
         "delimiter": "\t",
@@ -32,6 +23,8 @@ FILE_FORMATS = {
         "trigger_threshold": 0.1,
     },
 }
+
+FILE_CONFIG = dict(FILE_FORMATS["SD-card"])  # active config, updated at runtime when user switches format
 
 FILTER_CONFIG = {
     "lowcut_hz": 12.0,

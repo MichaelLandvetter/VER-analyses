@@ -42,6 +42,10 @@ class FileAcquisitionSimulatorTests(unittest.TestCase):
             self.assertEqual(samples[1][0], 1.0)
             self.assertAlmostEqual(samples[1][1], -0.015)
 
+    def test_file_config_initializes_from_sd_card_format(self):
+        self.assertEqual(FILE_CONFIG, FILE_FORMATS["SD-card"])
+        self.assertIsNot(FILE_CONFIG, FILE_FORMATS["SD-card"])
+
 
 if __name__ == "__main__":
     unittest.main()
