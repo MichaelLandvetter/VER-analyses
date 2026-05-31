@@ -12,6 +12,7 @@ from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDialog,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -90,6 +91,59 @@ def downsample_labchart_file(input_filepath: str) -> str:
     return str(output_path)
 
 
+class DownsampleDialog(QDialog):
+    """Modal dialog for downsampling LabChart files (1000 Hz → 250 Hz).
+
+    Opens as a modal window (blocking the main window) and stays open after
+    each conversion so the user can process multiple files in sequence.
+    Close the dialog when all files have been downsampled.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Downsample LabChart File")
+        self.setMinimumWidth(460)
+
+        layout = QVBoxLayout(self)
+
+        info_label = QLabel(
+            "This tool downsamples LabChart .txt files from 1000 Hz to 250 Hz "
+            "using anti-alias decimation.\n\n"
+            "Click the button to select a file. The output is saved in the same "
+            "directory with '_250_Hz' added to the filename.\n\n"
+            "You can downsample multiple files before closing this window."
+        )
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+
+        self._status_label = QLabel("")
+        self._status_label.setWordWrap(True)
+        layout.addWidget(self._status_label)
+
+        select_btn = QPushButton("Select file to downsample")
+        select_btn.clicked.connect(self._select_and_downsample)
+        layout.addWidget(select_btn)
+
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.close)
+        layout.addWidget(close_btn)
+
+    def _select_and_downsample(self):
+        input_filepath, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select LabChart file to downsample (1000 Hz → 250 Hz)",
+            "",
+            "Text files (*.txt);;All files (*.*)",
+        )
+        if not input_filepath:
+            return
+        try:
+            output_path = downsample_labchart_file(input_filepath)
+            self._status_label.setText(f"Saved: {output_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Downsampling failed:\n{e}")
+
+
 class AcquisitionWorker(QObject):
     sample_ready = pyqtSignal(object)
     eof_reached = pyqtSignal()
@@ -155,7 +209,6 @@ class VERMainWindow(QMainWindow):
 
         self._build_ui()
         self._build_menu()
-        self._select_data_file(initial=True)
 
     def _build_ui(self):
         central = QWidget(self)
@@ -261,23 +314,8 @@ class VERMainWindow(QMainWindow):
         )
 
     def _on_downsample(self):
-        input_filepath, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select LabChart file to downsample (1000 Hz → 250 Hz)",
-            "",
-            "Text files (*.txt);;All files (*.*)",
-        )
-        if not input_filepath:
-            return
-        try:
-            output_path = downsample_labchart_file(input_filepath)
-            QMessageBox.information(
-                self,
-                "Done",
-                f"File downsampled and saved as:\n{output_path}",
-            )
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Downsampling failed:\n{e}")
+        dlg = DownsampleDialog(self)
+        dlg.exec()
 
     def _select_data_file(self, initial: bool = False):
         default_path = str(Path.cwd())
