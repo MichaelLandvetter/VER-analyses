@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QDialog,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -102,9 +103,11 @@ class DownsampleDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Downsample LabChart File")
-        self.setMinimumWidth(460)
+        self.setMinimumWidth(480)
+        self.setMinimumHeight(220)
 
         layout = QVBoxLayout(self)
+        layout.setSpacing(10)
 
         info_label = QLabel(
             "This tool downsamples LabChart .txt files from 1000 Hz to 250 Hz "
@@ -116,10 +119,6 @@ class DownsampleDialog(QDialog):
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
 
-        self._status_label = QLabel("")
-        self._status_label.setWordWrap(True)
-        layout.addWidget(self._status_label)
-
         select_btn = QPushButton("Select file to downsample")
         select_btn.clicked.connect(self._select_and_downsample)
         layout.addWidget(select_btn)
@@ -127,6 +126,15 @@ class DownsampleDialog(QDialog):
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(self.close)
         layout.addWidget(close_btn)
+
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(separator)
+
+        self._status_label = QLabel("")
+        self._status_label.setWordWrap(True)
+        layout.addWidget(self._status_label)
 
     def _select_and_downsample(self):
         input_filepath, _ = QFileDialog.getOpenFileName(
