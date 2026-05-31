@@ -35,6 +35,61 @@ from ver_scope import VERScopeProcessor
 from ver_wavelet import compute_wavelet_scalogram
 
 
+def downsample_labchart_file(input_filepath: str) -> str:
+    """
+    Downsample a LabChart .txt file from 1000 Hz to 250 Hz using anti-alias decimation.
+    Saves the result as <original_name>_250_Hz.txt in the same directory.
+    Returns the output file path.
+    """
+    from scipy.signal import decimate
+
+    input_path = Path(input_filepath)
+    output_path = input_path.parent / f"{input_path.stem}_250_Hz{input_path.suffix}"
+    source_rate_hz = 1000
+    target_rate_hz = 250
+    decimation_factor = source_rate_hz // target_rate_hz
+
+    with open(input_path, "r", encoding="utf-8", errors="replace") as f:
+        lines = f.readlines()
+
+    data_rows = []
+    header_lines = []
+    parsing_started = False
+    for line in lines:
+        parts = line.strip().split("\t")
+        try:
+            numeric_parts = [float(p) for p in parts if p.strip()]
+            data_rows.append(numeric_parts)
+            parsing_started = True
+        except ValueError:
+            if not parsing_started:
+                header_lines.append(line)
+
+    if not data_rows:
+        raise ValueError("No numeric data rows found in file.")
+
+    array = np.array(data_rows)
+
+    decimated_cols = []
+    for col_idx in range(array.shape[1]):
+        col = array[:, col_idx]
+        try:
+            dec = decimate(col, q=decimation_factor, ftype="fir", zero_phase=True)
+        except Exception:
+            dec = col[::decimation_factor]
+        decimated_cols.append(dec)
+
+    decimated = np.column_stack(decimated_cols)
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        for line in header_lines:
+            f.write(line)
+        for row in decimated:
+            f.write("\t".join(f"{v:.6g}" for v in row) + "\n")
+
+    return str(output_path)
+
+
 class AcquisitionWorker(QObject):
     sample_ready = pyqtSignal(object)
     eof_reached = pyqtSignal()
@@ -177,11 +232,14 @@ class VERMainWindow(QMainWindow):
         open_action.triggered.connect(lambda: self._select_data_file(initial=False))
         save_action = QAction("Save Report", self)
         save_action.triggered.connect(self.save_report)
+        downsample_action = QAction("Downsample LabChart file (1000 Hz → 250 Hz)...", self)
+        downsample_action.triggered.connect(self._on_downsample)
         exit_action = QAction("Exit", self)
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self.close)
         file_menu.addAction(open_action)
         file_menu.addAction(save_action)
+        file_menu.addAction(downsample_action)
         file_menu.addSeparator()
         file_menu.addAction(exit_action)
 
@@ -201,6 +259,25 @@ class VERMainWindow(QMainWindow):
             "About VER Analysis",
             "Modular VER analysis with real-time replay, trigger-locked averaging, wavelet analysis, and report export.",
         )
+
+    def _on_downsample(self):
+        input_filepath, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select LabChart file to downsample (1000 Hz → 250 Hz)",
+            "",
+            "Text files (*.txt);;All files (*.*)",
+        )
+        if not input_filepath:
+            return
+        try:
+            output_path = downsample_labchart_file(input_filepath)
+            QMessageBox.information(
+                self,
+                "Done",
+                f"File downsampled and saved as:\n{output_path}",
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Downsampling failed:\n{e}")
 
     def _select_data_file(self, initial: bool = False):
         default_path = str(Path.cwd())

@@ -14,6 +14,17 @@ class VERMainSourceTests(unittest.TestCase):
         self.assertIn("def _on_format_changed(self, format_name: str):", self.source)
         self.assertIn("FILE_CONFIG.update(FILE_FORMATS[format_name])", self.source)
         self.assertIn("self.reset_all()", self.source)
+        self.assertIn('downsample_action = QAction("Downsample LabChart file (1000 Hz → 250 Hz)...", self)', self.source)
+        self.assertIn("downsample_action.triggered.connect(self._on_downsample)", self.source)
+        self.assertIn("def _on_downsample(self):", self.source)
+
+    def test_downsample_helper_uses_decimate(self):
+        self.assertIn("def downsample_labchart_file(input_filepath: str) -> str:", self.source)
+        self.assertIn("from scipy.signal import decimate", self.source)
+        self.assertIn("source_rate_hz = 1000", self.source)
+        self.assertIn("target_rate_hz = 250", self.source)
+        self.assertIn("decimation_factor = source_rate_hz // target_rate_hz", self.source)
+        self.assertIn("decimate(col, q=decimation_factor, ftype=\"fir\", zero_phase=True)", self.source)
 
     def test_speed_selector_combo_is_wired_to_speed_factor(self):
         self.assertIn('self.speed_combo = QComboBox()', self.source)
