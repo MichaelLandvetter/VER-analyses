@@ -45,6 +45,8 @@ class FileAcquisitionSimulatorTests(unittest.TestCase):
     def test_file_config_initializes_from_sd_card_format(self):
         self.assertEqual(FILE_CONFIG, FILE_FORMATS["SD-card"])
         self.assertIsNot(FILE_CONFIG, FILE_FORMATS["SD-card"])
+        FILE_CONFIG["delimiter"] = ","
+        self.assertEqual(FILE_FORMATS["SD-card"]["delimiter"], "\t")
 
 
 if __name__ == "__main__":

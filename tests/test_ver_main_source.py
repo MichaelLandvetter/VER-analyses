@@ -21,7 +21,10 @@ class VERMainSourceTests(unittest.TestCase):
     def test_downsample_helper_uses_decimate(self):
         self.assertIn("def downsample_labchart_file(input_filepath: str) -> str:", self.source)
         self.assertIn("from scipy.signal import decimate", self.source)
-        self.assertIn("decimate(col, q=4, ftype=\"fir\", zero_phase=True)", self.source)
+        self.assertIn("source_rate_hz = 1000", self.source)
+        self.assertIn("target_rate_hz = 250", self.source)
+        self.assertIn("decimation_factor = source_rate_hz // target_rate_hz", self.source)
+        self.assertIn("decimate(col, q=decimation_factor, ftype=\"fir\", zero_phase=True)", self.source)
 
     def test_speed_selector_combo_is_wired_to_speed_factor(self):
         self.assertIn('self.speed_combo = QComboBox()', self.source)

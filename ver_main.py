@@ -45,6 +45,9 @@ def downsample_labchart_file(input_filepath: str) -> str:
 
     input_path = Path(input_filepath)
     output_path = input_path.parent / f"{input_path.stem}_250_Hz{input_path.suffix}"
+    source_rate_hz = 1000
+    target_rate_hz = 250
+    decimation_factor = source_rate_hz // target_rate_hz
 
     with open(input_path, "r", encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
@@ -55,8 +58,8 @@ def downsample_labchart_file(input_filepath: str) -> str:
     for line in lines:
         parts = line.strip().split("\t")
         try:
-            [float(p) for p in parts if p.strip()]
-            data_rows.append(parts)
+            numeric_parts = [float(p) for p in parts if p.strip()]
+            data_rows.append(numeric_parts)
             parsing_started = True
         except ValueError:
             if not parsing_started:
@@ -65,15 +68,15 @@ def downsample_labchart_file(input_filepath: str) -> str:
     if not data_rows:
         raise ValueError("No numeric data rows found in file.")
 
-    array = np.array([[float(v) for v in row] for row in data_rows])
+    array = np.array(data_rows)
 
     decimated_cols = []
     for col_idx in range(array.shape[1]):
         col = array[:, col_idx]
         try:
-            dec = decimate(col, q=4, ftype="fir", zero_phase=True)
+            dec = decimate(col, q=decimation_factor, ftype="fir", zero_phase=True)
         except Exception:
-            dec = col[::4]
+            dec = col[::decimation_factor]
         decimated_cols.append(dec)
 
     decimated = np.column_stack(decimated_cols)
