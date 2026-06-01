@@ -299,6 +299,43 @@ class VERReportTests(unittest.TestCase):
         self.assertEqual(table.get_celld()[(1, headers["Peak-1 Amp"])].get_text().get_text(), "0.5000 (SNR=2.5)")
         plt.close(fig)
 
+    def test_report_shows_outline_markers_for_rejected_peaks(self):
+        import matplotlib.pyplot as plt
+        from ver_report import _build_figures_page
+        from ver_wavelet import compute_wavelet_scalogram
+
+        epoch_time_ms = np.linspace(-50, 400, 126)
+        session_averages_list = [np.sin(np.linspace(0, 3 * np.pi, epoch_time_ms.size))]
+        averages = np.asarray(session_averages_list)
+        wavelet, freqs = compute_wavelet_scalogram(session_averages_list[0])
+
+        fig = _build_figures_page(
+            averages,
+            epoch_time_ms,
+            [wavelet],
+            freqs,
+            float(freqs[0]),
+            float(freqs[-1]),
+            ["Minute 1"],
+            session_ver_peaks=[{
+                "Peak-1": {"found": True, "latency_ms": 80.0, "amplitude": 0.4, "above_threshold": True},
+                "Peak-2": {"found": True, "latency_ms": 120.0, "amplitude": -0.4, "above_threshold": False},
+                "Peak-3": {"found": False, "latency_ms": float("nan"), "amplitude": float("nan"), "above_threshold": False},
+            }],
+        )
+
+        ax1 = fig.axes[0]
+        marker_lines = [line for line in ax1.lines if line.get_marker() in {"^", "v"}]
+        self.assertEqual(len(marker_lines), 2)
+
+        filled_markers = [line for line in marker_lines if line.get_markerfacecolor() != "none"]
+        outline_markers = [line for line in marker_lines if line.get_markerfacecolor() == "none"]
+        self.assertEqual(len(filled_markers), 1)
+        self.assertEqual(len(outline_markers), 1)
+        self.assertEqual(outline_markers[0].get_markeredgecolor(), "#888888")
+
+        plt.close(fig)
+
 
 if __name__ == "__main__":
     unittest.main()

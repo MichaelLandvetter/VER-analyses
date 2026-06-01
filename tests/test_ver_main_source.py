@@ -60,6 +60,8 @@ class VERMainSourceTests(unittest.TestCase):
 
     def test_report_success_message_shows_report_directory(self):
         self.assertIn('f"Reports saved to:\\n{report_dir}', self.source)
+        self.assertIn('Summary CSV: {summary_csv_name}', self.source)
+        self.assertIn('Waveforms CSV: {waveforms_csv_name}', self.source)
 
 
 if __name__ == "__main__":
