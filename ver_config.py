@@ -40,6 +40,14 @@ EPOCH_CONFIG = {
     "num_sessions": 10,          # kept as key name for compatibility; displayed as minutes
 }
 
+# --- Peak detection ---
+# SNR_THRESHOLD: minimum signal-to-noise ratio for a peak to be classified as a VER.
+# BASELINE_START_MS / BASELINE_END_MS: time window (ms, relative to flash) used to calculate baseline noise.
+# Current default: -100 to 0 ms (pre-flash). Alternative used by some groups: +250 to +450 ms (post-flash).
+SNR_THRESHOLD = 2.0
+BASELINE_START_MS = -100
+BASELINE_END_MS = 0
+
 WAVELET_CONFIG = {
     "wavelet": "cmor1.5-1.0",
     "freq_min": 5.0,
