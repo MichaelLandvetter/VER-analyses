@@ -7,10 +7,9 @@ from typing import TypedDict
 import numpy as np
 from scipy.signal import find_peaks
 
-from ver_config import EPOCH_CONFIG
+import ver_config
 
 MIN_NOISE_RMS = 1e-10
-SNR_THRESHOLD = 2.0
 
 
 class VERPeak(TypedDict):
@@ -61,12 +60,17 @@ def detect_ver_peaks(epoch_avg: np.ndarray, epoch_time_ms: np.ndarray) -> VERPea
             "above_threshold": False,
         }
 
-    # pre_stim_ms is stored as a positive duration; negate it to get the start of pre-stimulus time.
-    baseline_mask = (epoch_time_ms >= -EPOCH_CONFIG["pre_stim_ms"]) & (epoch_time_ms < 0)
+    # Use the configured baseline window for both baseline correction and noise estimation.
+    baseline_mask = (
+        (epoch_time_ms >= ver_config.BASELINE_START_MS)
+        & (epoch_time_ms < ver_config.BASELINE_END_MS)
+    )
     baseline = float(np.mean(epoch_avg[baseline_mask])) if np.any(baseline_mask) else 0.0
 
-    # Estimate baseline noise using fixed -100 to 0ms window.
-    noise_mask = (epoch_time_ms >= -100) & (epoch_time_ms < 0)
+    noise_mask = (
+        (epoch_time_ms >= ver_config.BASELINE_START_MS)
+        & (epoch_time_ms < ver_config.BASELINE_END_MS)
+    )
     baseline_segment = epoch_avg[noise_mask]
     noise_rms = float(np.sqrt(np.mean(baseline_segment ** 2))) if np.any(noise_mask) else MIN_NOISE_RMS
     noise_rms = max(noise_rms, MIN_NOISE_RMS)
@@ -134,7 +138,7 @@ def detect_ver_peaks(epoch_avg: np.ndarray, epoch_time_ms: np.ndarray) -> VERPea
         if result[name]["found"]:
             snr = abs(result[name]["amplitude"]) / noise_rms
             result[name]["snr"] = snr
-            result[name]["above_threshold"] = snr >= SNR_THRESHOLD
+            result[name]["above_threshold"] = snr >= ver_config.SNR_THRESHOLD
 
     result["VER_detected"] = any(result[name]["above_threshold"] for name in peak_names)
     result["noise_rms"] = noise_rms

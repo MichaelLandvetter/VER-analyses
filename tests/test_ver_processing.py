@@ -1,7 +1,9 @@
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
+import ver_peaks
 from ver_filter import BandpassFilter
 from ver_peaks import detect_ver_peaks
 from ver_scope import VERScopeProcessor
@@ -175,7 +177,7 @@ class VERProcessingTests(unittest.TestCase):
         self.assertTrue(np.isnan(peaks['Peak-1']['latency_ms']))
 
     def test_detect_ver_peaks_applies_minus_100_to_0_baseline(self):
-        """Peaks should be reported relative to mean baseline in -100..0ms."""
+        """Default config keeps baseline correction in the -100..0ms window."""
         sample_rate = 250.0
         t = np.arange(-100, 300, 1000.0 / sample_rate)
         baseline_offset = 5.0
@@ -194,6 +196,20 @@ class VERProcessingTests(unittest.TestCase):
         self.assertAlmostEqual(peaks['Peak-2']['amplitude'], -1.2, delta=0.25)
         self.assertAlmostEqual(peaks['Peak-3']['amplitude'], 0.8, delta=0.25)
 
+    def test_detect_ver_peaks_uses_configured_baseline_period(self):
+        t = np.arange(-100, 500, 4.0)
+        epoch = (
+            2.0
+            + 3.0 * ((t >= -100) & (t < 0)).astype(float)
+            + 3.0 * np.exp(-((t - 70) ** 2) / (2 * 8 ** 2))
+        )
+
+        with patch.object(ver_peaks.ver_config, "BASELINE_START_MS", 250), patch.object(ver_peaks.ver_config, "BASELINE_END_MS", 450):
+            peaks = detect_ver_peaks(epoch, t)
+
+        self.assertAlmostEqual(peaks["Peak-1"]["latency_ms"], 70.0, delta=6.0)
+        self.assertAlmostEqual(peaks["Peak-1"]["amplitude"], 3.0, delta=0.3)
+
     def test_detect_ver_peaks_adds_snr_and_ver_detected(self):
         t = np.arange(-100, 300, 4.0)
         epoch = (
@@ -209,6 +225,23 @@ class VERProcessingTests(unittest.TestCase):
         self.assertIn("snr", peaks["Peak-1"])
         self.assertIn("above_threshold", peaks["Peak-1"])
         self.assertTrue(any(peaks[name]["above_threshold"] for name in ("Peak-1", "Peak-2", "Peak-3")))
+
+    def test_detect_ver_peaks_uses_configured_snr_threshold(self):
+        t = np.arange(-100, 300, 4.0)
+        baseline_mask = (t >= -100) & (t < 0)
+        baseline = np.sin(np.linspace(0, 4 * np.pi, np.count_nonzero(baseline_mask)))
+        baseline *= 0.25 / np.sqrt(np.mean(baseline ** 2))
+        epoch = np.zeros_like(t)
+        epoch[baseline_mask] = baseline
+        epoch += 0.7 * np.exp(-((t - 90) ** 2) / (2 * 7 ** 2))
+
+        with patch.object(ver_peaks.ver_config, "SNR_THRESHOLD", 3.0):
+            peaks = detect_ver_peaks(epoch, t)
+
+        self.assertGreater(peaks["Peak-1"]["snr"], 2.0)
+        self.assertLess(peaks["Peak-1"]["snr"], 3.0)
+        self.assertFalse(peaks["Peak-1"]["above_threshold"])
+        self.assertFalse(peaks["VER_detected"])
 
     def test_detect_ver_peaks_marks_no_ver_for_noise_only(self):
         rng = np.random.default_rng(7)
