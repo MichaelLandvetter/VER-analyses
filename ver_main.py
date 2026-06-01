@@ -555,10 +555,12 @@ class VERMainWindow(QMainWindow):
         report_dir = result.get("report_dir", str(Path(result["png"]).parent))
         png_name = Path(result["png"]).name
         pdf_name = Path(result["pdf"]).name if "pdf" in result else "—"
+        summary_csv_name = Path(result["summary_csv"]).name if "summary_csv" in result else "—"
+        waveforms_csv_name = Path(result["waveforms_csv"]).name if "waveforms_csv" in result else "—"
         QMessageBox.information(
             self,
             "Report saved",
-            f"Reports saved to:\n{report_dir}\n\nPNG: {png_name}\nPDF: {pdf_name}",
+            f"Reports saved to:\n{report_dir}\n\nPNG: {png_name}\nPDF: {pdf_name}\nSummary CSV: {summary_csv_name}\nWaveforms CSV: {waveforms_csv_name}",
         )
 
     def closeEvent(self, event):

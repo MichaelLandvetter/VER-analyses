@@ -211,11 +211,18 @@ def _build_figures_page(
                     if math.isnan(marker_x) or math.isnan(marker_y):
                         continue
                     marker = '^' if peak["amplitude"] >= 0 else 'v'
+                    if peak.get("above_threshold", True):
+                        marker_face_color = color
+                        marker_edge_color = color
+                    else:
+                        marker_face_color = "none"
+                        marker_edge_color = "#888888"
                     ax1.plot(
                         marker_x,
                         marker_y,
                         marker=marker,
-                        color=color,
+                        markerfacecolor=marker_face_color,
+                        markeredgecolor=marker_edge_color,
                         markersize=6,
                         linestyle="None",
                     )
