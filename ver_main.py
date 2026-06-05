@@ -169,18 +169,32 @@ class AcquisitionWorker(QObject):
         self.source = source
         self._running = False
         self._paused = True
+        self._batch_size = 8
+        self._batch_max_latency_s = 0.03
 
     def run(self):
         try:
             self._running = True
+            batch = []
+            last_emit = time.perf_counter()
             for row in self.source.stream_samples():
                 if not self._running:
                     break
                 while self._paused and self._running:
+                    if batch:
+                        self.sample_ready.emit(np.vstack(batch))
+                        batch = []
                     time.sleep(0.02)
                 if not self._running:
                     break
-                self.sample_ready.emit(np.asarray(row, dtype=float))
+                batch.append(np.asarray(row, dtype=float))
+                now = time.perf_counter()
+                if len(batch) >= self._batch_size or (now - last_emit) >= self._batch_max_latency_s:
+                    self.sample_ready.emit(np.vstack(batch))
+                    batch = []
+                    last_emit = now
+            if batch:
+                self.sample_ready.emit(np.vstack(batch))
             self.eof_reached.emit()
         except Exception as exc:  # pragma: no cover
             self.error.emit(str(exc))
@@ -472,8 +486,16 @@ class VERMainWindow(QMainWindow):
         self.display.set_status(f"Filter updated: {low:.1f}-{high:.1f} Hz")
 
     def _handle_sample(self, row: np.ndarray):
-        trigger = bool(row[0])
-        eeg = float(row[1])
+        samples = np.asarray(row, dtype=float)
+        if samples.ndim == 1:
+            self._handle_single_sample(samples)
+            return
+        for sample in samples:
+            self._handle_single_sample(sample)
+
+    def _handle_single_sample(self, sample: np.ndarray):
+        trigger = bool(sample[0])
+        eeg = float(sample[1])
         filtered = self.bandpass.process_sample(eeg)
 
         scope_result = self.scope.process_sample(trigger, eeg)
