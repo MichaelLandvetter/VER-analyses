@@ -140,6 +140,8 @@ class WaveshareAcquisitionSource:
 
     def stream_samples(self) -> Generator[np.ndarray, None, None]:
         self._open()
+        sample_interval = 1.0 / self.sample_rate if self.sample_rate > 0 else 0.0
+        next_sample_time = time.perf_counter()
         try:
             while True:
                 # Method name is from vendor API ("Channal").
@@ -149,5 +151,12 @@ class WaveshareAcquisitionSource:
                 trigger_value = self._raw_to_voltage(trigger_raw)
                 trigger = 1.0 if trigger_value > self.trigger_threshold else 0.0
                 yield np.asarray([trigger, eeg], dtype=float)
+                if sample_interval > 0:
+                    next_sample_time += sample_interval
+                    sleep_for = next_sample_time - time.perf_counter()
+                    if sleep_for > 0:
+                        time.sleep(sleep_for)
+                    elif sleep_for < -sample_interval:
+                        next_sample_time = time.perf_counter()
         finally:
             self.close()
