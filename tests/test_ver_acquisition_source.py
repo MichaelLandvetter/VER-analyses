@@ -15,6 +15,13 @@ class VERAcquisitionSourceTests(unittest.TestCase):
         self.assertIn("if sleep_for > 0:", self.source)
         self.assertIn("time.sleep(sleep_for)", self.source)
 
+    def test_waveshare_trigger_uses_hysteresis_and_min_interval(self):
+        self.assertIn("trigger_high_threshold", self.source)
+        self.assertIn("trigger_low_threshold", self.source)
+        self.assertIn("trigger_min_interval_s", self.source)
+        self.assertIn("rising_edge = self._trigger_high and not prev_trigger_high", self.source)
+        self.assertIn("or now - self._last_trigger_time >= self.trigger_min_interval_s", self.source)
+
 
 if __name__ == "__main__":
     unittest.main()

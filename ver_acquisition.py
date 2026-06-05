@@ -67,6 +67,9 @@ class WaveshareAcquisitionSource:
         eeg_channel: Optional[int] = None,
         trigger_channel: Optional[int] = None,
         trigger_threshold: Optional[float] = None,
+        trigger_high_threshold: Optional[float] = None,
+        trigger_low_threshold: Optional[float] = None,
+        trigger_min_interval_ms: Optional[float] = None,
         adc_gain: Optional[str] = None,
         adc_rate: Optional[str] = None,
         voltage_ref: Optional[float] = None,
@@ -78,11 +81,32 @@ class WaveshareAcquisitionSource:
         self.trigger_threshold = float(
             trigger_threshold if trigger_threshold is not None else HARDWARE_CONFIG["trigger_threshold"]
         )
+        self.trigger_high_threshold = float(
+            trigger_high_threshold
+            if trigger_high_threshold is not None
+            else HARDWARE_CONFIG.get("trigger_high_threshold", self.trigger_threshold)
+        )
+        self.trigger_low_threshold = float(
+            trigger_low_threshold
+            if trigger_low_threshold is not None
+            else HARDWARE_CONFIG.get("trigger_low_threshold", self.trigger_threshold * 0.5)
+        )
+        self.trigger_min_interval_s = max(
+            0.0,
+            float(
+                trigger_min_interval_ms
+                if trigger_min_interval_ms is not None
+                else HARDWARE_CONFIG.get("trigger_min_interval_ms", 0.0)
+            )
+            / 1000.0,
+        )
         self.adc_gain = str(adc_gain if adc_gain is not None else HARDWARE_CONFIG["adc_gain"])
         self.adc_rate = str(adc_rate if adc_rate is not None else HARDWARE_CONFIG["adc_rate"])
         self.voltage_ref = float(voltage_ref if voltage_ref is not None else HARDWARE_CONFIG["voltage_ref"])
         self._adc = None
         self._waveshare_config = None
+        self._trigger_high = False
+        self._last_trigger_time = None
 
     def _load_waveshare_modules(self) -> tuple[object, object]:
         waveshare_path = str(self.waveshare_dir.resolve())
@@ -118,6 +142,10 @@ class WaveshareAcquisitionSource:
                 f"Unsupported ADS1256 data rate: {self.adc_rate}. "
                 f"Supported values: {sorted(ads1256_module.ADS1256_DRATE_E.keys())}"
             )
+        if self.trigger_low_threshold >= self.trigger_high_threshold:
+            raise ValueError(
+                "Invalid trigger thresholds: trigger_low_threshold must be less than trigger_high_threshold."
+            )
 
         gain = ads1256_module.ADS1256_GAIN_E[self.adc_gain]
         drate = ads1256_module.ADS1256_DRATE_E[self.adc_rate]
@@ -149,7 +177,24 @@ class WaveshareAcquisitionSource:
                 trigger_raw = self._adc.ADS1256_GetChannalValue(self.trigger_channel)
                 eeg = self._raw_to_voltage(eeg_raw)
                 trigger_value = self._raw_to_voltage(trigger_raw)
-                trigger = 1.0 if trigger_value > self.trigger_threshold else 0.0
+                prev_trigger_high = self._trigger_high
+                if self._trigger_high:
+                    if trigger_value <= self.trigger_low_threshold:
+                        self._trigger_high = False
+                elif trigger_value >= self.trigger_high_threshold:
+                    self._trigger_high = True
+
+                rising_edge = self._trigger_high and not prev_trigger_high
+                trigger = 0.0
+                if rising_edge:
+                    now = time.perf_counter()
+                    if (
+                        self._last_trigger_time is None
+                        or self.trigger_min_interval_s <= 0
+                        or now - self._last_trigger_time >= self.trigger_min_interval_s
+                    ):
+                        trigger = 1.0
+                        self._last_trigger_time = now
                 yield np.asarray([trigger, eeg], dtype=float)
                 if sample_interval > 0:
                     next_sample_time += sample_interval

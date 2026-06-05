@@ -63,7 +63,11 @@ Sampling rate remains at 250 Hz for all calculations.
 ## Waveshare Live Mode
 
 - Default channels: CH0 = EEG, CH1 = trigger.
-- Trigger is converted to binary using threshold mode (`HARDWARE_CONFIG["trigger_threshold"]` in `ver_config.py`).
+- Trigger uses Schmitt-style hysteresis for robust edge detection in noisy environments:
+  - `HARDWARE_CONFIG["trigger_high_threshold"]` (arm high)
+  - `HARDWARE_CONFIG["trigger_low_threshold"]` (re-arm low)
+  - `HARDWARE_CONFIG["trigger_min_interval_ms"]` (minimum interval between accepted trigger pulses)
+- `HARDWARE_CONFIG["trigger_threshold"]` is retained for compatibility.
 - The ADS1256 data-rate default is set to 500 SPS in `HARDWARE_CONFIG`, which provides an effective 250 Hz output per channel when alternating CH0/CH1 reads.
 - SPI speed is configured in `Waveshare/config.py` (`SPI.max_speed_hz = 1000000`).
 
