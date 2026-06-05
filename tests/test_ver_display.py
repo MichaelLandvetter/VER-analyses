@@ -55,13 +55,21 @@ class VERDisplaySourceTests(unittest.TestCase):
     def test_safe_default_plot_ranges_are_applied(self):
         self.assertIn("self.plot_sessions.setXRange(-200, 400, padding=0)", self.source)
         self.assertIn("self.plot_sessions.enableAutoRange('y', True)", self.source)
-        self.assertIn("self.plot_raw.enableAutoRange('x', True)", self.source)
+        # x-range on the raw plot is managed manually (no autoRange) to avoid
+        # pyqtgraph's continuous np.isfinite scans on every paint event.
+        self.assertNotIn("self.plot_raw.enableAutoRange('x', True)", self.source)
+        self.assertIn('self.plot_raw.setXRange(0, DISPLAY_CONFIG["scroll_seconds"], padding=0)', self.source)
+        self.assertIn("autoDownsample=True", self.source)
         self.assertIn("self.plot_raw.setYRange(-1, 1, padding=0)", self.source)
         self.assertIn('self.plot_scope.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)', self.source)
         self.assertIn("self.plot_scope.enableAutoRange('y', True)", self.source)
         self.assertIn('self.plot_wavelet.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)', self.source)
         self.assertIn("self.plot_wavelet.setYRange(0, 50, padding=0)", self.source)
         self.assertIn("self._offset_step = None", self.source)
+
+    def test_scroll_x_range_updated_manually_in_render(self):
+        self.assertIn("self.plot_raw.setXRange(float(x[0]), float(x[-1]), padding=0.02)", self.source)
+        self.assertIn("self.plot_raw.setXRange(0, self.scroll_seconds, padding=0)", self.source)
 
     def test_scroll_panel_render_is_throttled_to_max_fps(self):
         self.assertIn("self._last_scroll_draw = 0.0", self.source)

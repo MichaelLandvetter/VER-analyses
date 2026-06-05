@@ -73,10 +73,10 @@ class VERDisplayWidget(QWidget):
         self.plot_raw.showGrid(x=True, y=True, alpha=0.3)
         self.plot_raw.setLabel("bottom", "Time", "s")
         self.plot_raw.setLabel("left", "Amplitude")
-        self.plot_raw.enableAutoRange('x', True)
+        self.plot_raw.setXRange(0, DISPLAY_CONFIG["scroll_seconds"], padding=0)
         self.plot_raw.setYRange(-1, 1, padding=0)
-        self.curve_raw = self.plot_raw.plot(pen=pg.mkPen((170, 170, 170), width=1))
-        self.curve_filtered = self.plot_raw.plot(pen=pg.mkPen((0, 220, 120), width=1.5))
+        self.curve_raw = self.plot_raw.plot(pen=pg.mkPen((170, 170, 170), width=1), autoDownsample=True)
+        self.curve_filtered = self.plot_raw.plot(pen=pg.mkPen((0, 220, 120), width=1.5), autoDownsample=True)
         self.flash_scatter = pg.ScatterPlotItem(size=6, brush=pg.mkBrush(255, 0, 0, 180), pen=pg.mkPen(None))
         self.plot_raw.addItem(self.flash_scatter)
 
@@ -127,6 +127,7 @@ class VERDisplayWidget(QWidget):
 
         self.curve_raw.setData(x, y_raw)
         self.curve_filtered.setData(x, y_filt)
+        self.plot_raw.setXRange(float(x[0]), float(x[-1]), padding=0.02)
 
         if self.flash_times:
             if len(y_filt) > 0:
@@ -290,7 +291,7 @@ class VERDisplayWidget(QWidget):
         self.wavelet_image.setImage(np.zeros((2, 2)))
         self.wavelet_stats_label.setText("Peak: — Hz | — ms | Power: —")
         self._reset_sessions_panel()
-        self.plot_raw.enableAutoRange('x', True)
+        self.plot_raw.setXRange(0, self.scroll_seconds, padding=0)
         self.plot_raw.setYRange(-1, 1, padding=0)
         self.plot_scope.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)
         self.plot_scope.enableAutoRange('y', True)
