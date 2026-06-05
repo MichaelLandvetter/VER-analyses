@@ -1,6 +1,6 @@
 # VER Analysis Program
 
-This repository contains a modular Python program for VER (Visually Evoked Response) analysis. It replays a raw EEG text file at 250 Hz to simulate live acquisition, performs trigger-locked epoch averaging, computes wavelet scalograms, and generates a final summary report.
+This repository contains a modular Python program for VER (Visually Evoked Response) analysis. It replays a raw EEG text file at 250 Hz (or reads live Waveshare ADS1256 data), performs trigger-locked epoch averaging, computes wavelet scalograms, and generates a final summary report.
 
 ## Installation
 
@@ -28,11 +28,12 @@ python ver_main.py
 ```
 
 At startup, choose a `.txt` raw data file (for example `RAW_files_combined.txt`).
+For live mode, switch **Source** to **Waveshare Live (CH0/CH1 @ 250 Hz)**.
 
 ## Module Overview
 
 - `ver_config.py`: all tunable parameters (acquisition, file columns, filter, epochs, wavelet).
-- `ver_acquisition.py`: file-based simulator yielding one sample row at a time at 250 Hz.
+- `ver_acquisition.py`: file replay and Waveshare ADS1256 live acquisition sources.
 - `ver_filter.py`: Butterworth bandpass filter with causal and zero-phase modes.
 - `ver_scope.py`: rising-edge trigger detection, epoch extraction, and running/session averages.
 - `ver_wavelet.py`: CWT/scalogram computation (`pywt.cwt`) for averaged epochs.
@@ -55,8 +56,16 @@ Format definitions are centralized in `FILE_FORMATS` inside `ver_config.py`.
 
 ## Fast Replay Mode
 
-Use the **Fast mode** checkbox in the Controls panel to run replay faster than real-time.
+Use the **Source** dropdown to select file replay or Waveshare live mode.
+For file replay, use the speed dropdown to run replay faster than real-time.
 Sampling rate remains at 250 Hz for all calculations.
+
+## Waveshare Live Mode
+
+- Default channels: CH0 = EEG, CH1 = trigger.
+- Trigger is converted to binary using threshold mode (`HARDWARE_CONFIG["trigger_threshold"]` in `ver_config.py`).
+- The ADS1256 data-rate default is set to 500 SPS in `HARDWARE_CONFIG`, which provides an effective 250 Hz output per channel when alternating CH0/CH1 reads.
+- SPI speed is configured in `Waveshare/config.py` (`SPI.max_speed_hz = 1000000`).
 
 ## Output Report
 

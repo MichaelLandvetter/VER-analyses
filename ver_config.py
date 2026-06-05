@@ -3,6 +3,17 @@
 ACQ_CONFIG = {
     "sample_rate": 250,
     "simulate_realtime": True,
+    "source_mode": "File",
+}
+
+HARDWARE_CONFIG = {
+    "waveshare_dir": "Waveshare",
+    "eeg_channel": 0,
+    "trigger_channel": 1,
+    "trigger_threshold": 1.0,
+    "adc_gain": "ADS1256_GAIN_1",
+    "adc_rate": "ADS1256_500SPS",
+    "voltage_ref": 5.0,
 }
 
 FILE_FORMATS = {

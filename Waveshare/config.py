@@ -58,7 +58,7 @@ def module_init():
     lgpio.gpio_claim_output(h, CS_DAC_PIN)
     lgpio.gpio_claim_output(h, CS_PIN)
     lgpio.gpio_claim_input(h, DRDY_PIN)
-    SPI.max_speed_hz = 20000
+    SPI.max_speed_hz = 1000000
     SPI.mode = 0b01
     return 0
 

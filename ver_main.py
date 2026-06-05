@@ -28,8 +28,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ver_acquisition import FileAcquisitionSimulator
-from ver_config import ACQ_CONFIG, EPOCH_CONFIG, FILE_CONFIG, FILE_FORMATS, FILTER_CONFIG
+from ver_acquisition import FileAcquisitionSimulator, WaveshareAcquisitionSource
+from ver_config import ACQ_CONFIG, EPOCH_CONFIG, FILE_CONFIG, FILE_FORMATS, FILTER_CONFIG, HARDWARE_CONFIG
 from ver_display import VERDisplayWidget
 from ver_filter import BandpassFilter
 from ver_peaks import detect_ver_peaks
@@ -164,23 +164,16 @@ class AcquisitionWorker(QObject):
     eof_reached = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, file_path: str, sample_rate: float, speed_factor: float | None):
+    def __init__(self, source):
         super().__init__()
-        self.file_path = file_path
-        self.sample_rate = sample_rate
-        self.speed_factor = speed_factor
+        self.source = source
         self._running = False
         self._paused = True
 
     def run(self):
         try:
-            simulator = FileAcquisitionSimulator(
-                self.file_path,
-                sample_rate=self.sample_rate,
-                speed_factor=self.speed_factor,
-            )
             self._running = True
-            for row in simulator.stream_samples():
+            for row in self.source.stream_samples():
                 if not self._running:
                     break
                 while self._paused and self._running:
@@ -191,6 +184,10 @@ class AcquisitionWorker(QObject):
             self.eof_reached.emit()
         except Exception as exc:  # pragma: no cover
             self.error.emit(str(exc))
+        finally:
+            close_fn = getattr(self.source, "close", None)
+            if callable(close_fn):
+                close_fn()
 
     def start_stream(self):
         self._paused = False
@@ -212,6 +209,7 @@ class VERMainWindow(QMainWindow):
         self.data_file = None
         self.worker = None
         self.worker_thread = None
+        self.acquisition_source_mode = ACQ_CONFIG.get("source_mode", "File")
         self.session_wavelets = []
         self.session_wavelet_freqs = None
         self.session_labels = []
@@ -267,6 +265,9 @@ class VERMainWindow(QMainWindow):
         self.speed_combo = QComboBox()
         self.speed_combo.addItems(["Real-time (1×)", "Fast (10×)", "Maximum speed"])
         self.speed_combo.setToolTip("Replay speed")
+        self.source_combo = QComboBox()
+        self.source_combo.addItems(["File Replay", "Waveshare Live (CH0/CH1 @ 250 Hz)"])
+        self.source_combo.currentTextChanged.connect(self._on_source_mode_changed)
         self.start_btn.clicked.connect(self.start_acquisition)
         self.stop_btn.clicked.connect(self.stop_acquisition)
         self.reset_btn.clicked.connect(self.reset_all)
@@ -275,6 +276,7 @@ class VERMainWindow(QMainWindow):
         run_layout.addWidget(self.stop_btn)
         run_layout.addWidget(self.reset_btn)
         run_layout.addWidget(self.save_btn)
+        run_layout.addWidget(self.source_combo)
         run_layout.addWidget(self.speed_combo)
 
         self.progress_label = QLabel("Minute 0/10 | Flash 0/120")
@@ -291,6 +293,7 @@ class VERMainWindow(QMainWindow):
 
         self.setCentralWidget(central)
         self._set_current_format()
+        self._set_current_source_mode()
 
     def _build_menu(self):
         menubar = self.menuBar()
@@ -354,17 +357,58 @@ class VERMainWindow(QMainWindow):
         self._shutdown_worker()
         self._start_worker(self._get_speed_factor())
 
+    def _on_source_mode_changed(self, mode: str):
+        self.acquisition_source_mode = "Waveshare" if mode.startswith("Waveshare") else "File"
+        ACQ_CONFIG["source_mode"] = self.acquisition_source_mode
+        is_hardware = self.acquisition_source_mode == "Waveshare"
+        self.speed_combo.setEnabled(not is_hardware)
+        self.format_combo.setEnabled(not is_hardware)
+        if is_hardware:
+            self.display.set_status("Source: Waveshare live (CH0 EEG, CH1 trigger)")
+        else:
+            self.display.set_status("Source: File replay")
+        if self.worker is not None:
+            self._shutdown_worker()
+
+    def _set_current_source_mode(self):
+        if self.acquisition_source_mode == "Waveshare":
+            self.source_combo.setCurrentText("Waveshare Live (CH0/CH1 @ 250 Hz)")
+        else:
+            self.source_combo.setCurrentText("File Replay")
+
     def _get_speed_factor(self) -> float | None:
         speed_map = {"Real-time (1×)": 1.0, "Fast (10×)": 10.0, "Maximum speed": None}
         return speed_map.get(self.speed_combo.currentText(), 1.0)
 
-    def _start_worker(self, speed_factor: float | None = 1.0):
+    def _build_acquisition_source(self, speed_factor: float | None):
+        if self.acquisition_source_mode == "Waveshare":
+            return WaveshareAcquisitionSource(
+                sample_rate=ACQ_CONFIG["sample_rate"],
+                waveshare_dir=str(Path(__file__).with_name(HARDWARE_CONFIG["waveshare_dir"])),
+                eeg_channel=HARDWARE_CONFIG["eeg_channel"],
+                trigger_channel=HARDWARE_CONFIG["trigger_channel"],
+                trigger_threshold=HARDWARE_CONFIG["trigger_threshold"],
+                adc_gain=HARDWARE_CONFIG["adc_gain"],
+                adc_rate=HARDWARE_CONFIG["adc_rate"],
+                voltage_ref=HARDWARE_CONFIG["voltage_ref"],
+            )
+
         if not self.data_file:
             QMessageBox.warning(self, "No file", "Please select a data file first.")
+            return None
+        return FileAcquisitionSimulator(
+            self.data_file,
+            sample_rate=ACQ_CONFIG["sample_rate"],
+            speed_factor=speed_factor,
+        )
+
+    def _start_worker(self, speed_factor: float | None = 1.0):
+        source = self._build_acquisition_source(speed_factor)
+        if source is None:
             return
 
         self.worker_thread = QThread(self)
-        self.worker = AcquisitionWorker(self.data_file, ACQ_CONFIG["sample_rate"], speed_factor)
+        self.worker = AcquisitionWorker(source)
         self.worker.moveToThread(self.worker_thread)
 
         self.worker_thread.started.connect(self.worker.run)
@@ -536,11 +580,11 @@ class VERMainWindow(QMainWindow):
         self.format_combo.setCurrentText(default_name)
 
     def save_report(self):
-        if not self.data_file:
-            QMessageBox.warning(self, "No file", "Please select a data file first.")
-            return
+        report_input = self.data_file
+        if report_input is None:
+            report_input = str(Path.cwd() / "live_waveshare_capture.txt")
         result = save_ver_report(
-            self.data_file,
+            report_input,
             self.scope.session_averages,
             self.scope.epoch_time_ms,
             session_wavelets=self.session_wavelets if self.session_wavelets else None,
