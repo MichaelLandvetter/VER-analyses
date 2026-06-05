@@ -582,7 +582,7 @@ class VERMainWindow(QMainWindow):
     def save_report(self):
         report_input = self.data_file
         if report_input is None:
-            report_input = str(Path.cwd() / "live_waveshare_capture.txt")
+            report_input = str(Path.cwd() / "waveshare_live_report.txt")
         result = save_ver_report(
             report_input,
             self.scope.session_averages,

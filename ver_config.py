@@ -12,7 +12,7 @@ HARDWARE_CONFIG = {
     "trigger_channel": 1,
     "trigger_threshold": 1.0,
     "adc_gain": "ADS1256_GAIN_1",
-    "adc_rate": "ADS1256_500SPS",
+    "adc_rate": "ADS1256_500SPS",  # 500 SPS gives ~250 Hz per channel when alternating CH0/CH1 reads
     "voltage_ref": 5.0,
 }
 

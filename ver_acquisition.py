@@ -88,8 +88,15 @@ class WaveshareAcquisitionSource:
         waveshare_path = str(self.waveshare_dir.resolve())
         if waveshare_path not in sys.path:
             sys.path.insert(0, waveshare_path)
-        ads1256_module = importlib.import_module("ADS1256")
-        config_module = importlib.import_module("config")
+        try:
+            ads1256_module = importlib.import_module("ADS1256")
+            config_module = importlib.import_module("config")
+        except Exception as exc:
+            raise RuntimeError(
+                "Waveshare ADS1256 modules could not be imported from "
+                f"{waveshare_path}. Ensure ADS1256.py and config.py exist and required "
+                "dependencies (spidev, lgpio) are installed."
+            ) from exc
         return ads1256_module, config_module
 
     def _open(self) -> None:
@@ -102,9 +109,15 @@ class WaveshareAcquisitionSource:
             raise RuntimeError("Failed to initialize Waveshare ADS1256")
 
         if self.adc_gain not in ads1256_module.ADS1256_GAIN_E:
-            raise ValueError(f"Unsupported ADS1256 gain: {self.adc_gain}")
+            raise ValueError(
+                f"Unsupported ADS1256 gain: {self.adc_gain}. "
+                f"Supported values: {sorted(ads1256_module.ADS1256_GAIN_E.keys())}"
+            )
         if self.adc_rate not in ads1256_module.ADS1256_DRATE_E:
-            raise ValueError(f"Unsupported ADS1256 data rate: {self.adc_rate}")
+            raise ValueError(
+                f"Unsupported ADS1256 data rate: {self.adc_rate}. "
+                f"Supported values: {sorted(ads1256_module.ADS1256_DRATE_E.keys())}"
+            )
 
         gain = ads1256_module.ADS1256_GAIN_E[self.adc_gain]
         drate = ads1256_module.ADS1256_DRATE_E[self.adc_rate]
@@ -129,6 +142,7 @@ class WaveshareAcquisitionSource:
         self._open()
         try:
             while True:
+                # Method name is from vendor API ("Channal").
                 eeg_raw = self._adc.ADS1256_GetChannalValue(self.eeg_channel)
                 trigger_raw = self._adc.ADS1256_GetChannalValue(self.trigger_channel)
                 eeg = self._raw_to_voltage(eeg_raw)
