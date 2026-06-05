@@ -63,6 +63,19 @@ class VERDisplaySourceTests(unittest.TestCase):
         self.assertIn("self.plot_wavelet.setYRange(0, 50, padding=0)", self.source)
         self.assertIn("self._offset_step = None", self.source)
 
+    def test_scroll_panel_render_is_throttled_to_max_fps(self):
+        self.assertIn("self._last_scroll_draw = 0.0", self.source)
+        self.assertIn("self._scroll_min_interval = 1.0 / max(1, DISPLAY_CONFIG.get(\"scroll_max_fps\", 30))", self.source)
+        self.assertIn("now = time.perf_counter()", self.source)
+        self.assertIn("if now - self._last_scroll_draw < self._scroll_min_interval:", self.source)
+        self.assertIn("return", self.source)
+        self.assertIn("self._last_scroll_draw = now", self.source)
+        # Trigger detection must happen before the throttle guard so no flash is lost
+        self.assertTrue(
+            self.source.index("if trigger_detected:") < self.source.index("if now - self._last_scroll_draw"),
+            "Trigger recording must precede the throttle guard",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

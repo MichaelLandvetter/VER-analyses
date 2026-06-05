@@ -69,4 +69,8 @@ WAVELET_CONFIG = {
 DISPLAY_CONFIG = {
     "scroll_seconds": 10,
     "max_epoch_overlays": 120,
+    # Maximum frames per second for the scroll panel redraws.
+    # Caps setData calls so fast replay (e.g. 10×) does not overwhelm the Qt paint
+    # pipeline on low-power hardware such as a Raspberry Pi 4B.
+    "scroll_max_fps": 30,
 }

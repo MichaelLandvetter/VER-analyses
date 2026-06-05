@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 import math
+import time
 from typing import List, Optional
 
 import numpy as np
@@ -27,6 +28,8 @@ class VERDisplayWidget(QWidget):
         self.time_buffer = deque(maxlen=self.max_scroll_samples)
         self.flash_times = deque(maxlen=500)
         self.sample_index = 0
+        self._last_scroll_draw = 0.0
+        self._scroll_min_interval = 1.0 / max(1, DISPLAY_CONFIG.get("scroll_max_fps", 30))
 
         self.session_colors = [
             "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
@@ -110,15 +113,20 @@ class VERDisplayWidget(QWidget):
         self.raw_buffer.append(float(raw_sample))
         self.filtered_buffer.append(float(filtered_sample))
 
+        if trigger_detected:
+            self.flash_times.append(t)
+
+        now = time.perf_counter()
+        if now - self._last_scroll_draw < self._scroll_min_interval:
+            return
+        self._last_scroll_draw = now
+
         x = np.asarray(self.time_buffer, dtype=float)
         y_raw = np.asarray(self.raw_buffer, dtype=float)
         y_filt = np.asarray(self.filtered_buffer, dtype=float)
 
         self.curve_raw.setData(x, y_raw)
         self.curve_filtered.setData(x, y_filt)
-
-        if trigger_detected:
-            self.flash_times.append(t)
 
         if self.flash_times:
             if len(y_filt) > 0:
@@ -274,6 +282,7 @@ class VERDisplayWidget(QWidget):
         self.time_buffer.clear()
         self.flash_times.clear()
         self.sample_index = 0
+        self._last_scroll_draw = 0.0
         self.curve_raw.setData([], [])
         self.curve_filtered.setData([], [])
         self.flash_scatter.setData(x=[], y=[])
