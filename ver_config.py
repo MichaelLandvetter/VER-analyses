@@ -62,6 +62,17 @@ SNR_THRESHOLD = 2.0
 BASELINE_START_MS = -100
 BASELINE_END_MS = 0
 
+SERIAL_CONFIG = {
+    # USB serial port the microcontroller is connected to.
+    # Windows: "COM3", "COM4", … — Linux/macOS: "/dev/ttyUSB0", "/dev/ttyACM0", …
+    "port": "COM3",
+    # Baud rate must match the firmware setting on the microcontroller.
+    "baud_rate": 115200,
+    # readline() timeout in seconds.  If no byte arrives within this window
+    # the read returns an empty bytes object and the loop retries.
+    "timeout": 2.0,
+}
+
 WAVELET_CONFIG = {
     "wavelet": "cmor1.5-1.0",
     "freq_min": 5.0,

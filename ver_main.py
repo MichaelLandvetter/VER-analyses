@@ -28,8 +28,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ver_acquisition import FileAcquisitionSimulator, WaveshareAcquisitionSource
-from ver_config import ACQ_CONFIG, EPOCH_CONFIG, FILE_CONFIG, FILE_FORMATS, FILTER_CONFIG, HARDWARE_CONFIG
+from ver_acquisition import FileAcquisitionSimulator, SerialAcquisitionSource, WaveshareAcquisitionSource
+from ver_config import ACQ_CONFIG, EPOCH_CONFIG, FILE_CONFIG, FILE_FORMATS, FILTER_CONFIG, HARDWARE_CONFIG, SERIAL_CONFIG
 from ver_display import VERDisplayWidget
 from ver_filter import BandpassFilter
 from ver_peaks import detect_ver_peaks
@@ -280,18 +280,33 @@ class VERMainWindow(QMainWindow):
         self.speed_combo.addItems(["Real-time (1×)", "Fast (10×)", "Maximum speed"])
         self.speed_combo.setToolTip("Replay speed")
         self.source_combo = QComboBox()
-        self.source_combo.addItems(["File Replay", "Waveshare Live (CH0/CH1 @ 250 Hz)"])
+        self.source_combo.addItems([
+            "File Replay",
+            "Waveshare Live (CH0/CH1 @ 250 Hz)",
+            "USB Serial (microcontroller)",
+        ])
         self.source_combo.currentTextChanged.connect(self._on_source_mode_changed)
         self.start_btn.clicked.connect(self.start_acquisition)
         self.stop_btn.clicked.connect(self.stop_acquisition)
         self.reset_btn.clicked.connect(self.reset_all)
         self.save_btn.clicked.connect(self.save_report)
+        self.serial_port_combo = QComboBox()
+        self.serial_port_combo.setMinimumWidth(130)
+        self.serial_port_combo.setToolTip("USB serial port (e.g. COM3 or /dev/ttyUSB0)")
+        self.serial_port_combo.setEnabled(False)
+        self.serial_refresh_btn = QPushButton("⟳")
+        self.serial_refresh_btn.setFixedWidth(28)
+        self.serial_refresh_btn.setToolTip("Refresh serial port list")
+        self.serial_refresh_btn.setEnabled(False)
+        self.serial_refresh_btn.clicked.connect(self._refresh_serial_ports)
         run_layout.addWidget(self.start_btn)
         run_layout.addWidget(self.stop_btn)
         run_layout.addWidget(self.reset_btn)
         run_layout.addWidget(self.save_btn)
         run_layout.addWidget(self.source_combo)
         run_layout.addWidget(self.speed_combo)
+        run_layout.addWidget(self.serial_port_combo)
+        run_layout.addWidget(self.serial_refresh_btn)
 
         self.progress_label = QLabel("Minute 0/10 | Flash 0/120")
 
@@ -372,13 +387,24 @@ class VERMainWindow(QMainWindow):
         self._start_worker(self._get_speed_factor())
 
     def _on_source_mode_changed(self, mode: str):
-        self.acquisition_source_mode = "Waveshare" if mode.startswith("Waveshare") else "File"
+        if mode.startswith("Waveshare"):
+            self.acquisition_source_mode = "Waveshare"
+        elif mode.startswith("USB Serial"):
+            self.acquisition_source_mode = "Serial"
+        else:
+            self.acquisition_source_mode = "File"
         ACQ_CONFIG["source_mode"] = self.acquisition_source_mode
-        is_hardware = self.acquisition_source_mode == "Waveshare"
-        self.speed_combo.setEnabled(not is_hardware)
-        self.format_combo.setEnabled(not is_hardware)
-        if is_hardware:
+        is_file = self.acquisition_source_mode == "File"
+        is_serial = self.acquisition_source_mode == "Serial"
+        self.speed_combo.setEnabled(is_file)
+        self.format_combo.setEnabled(is_file)
+        self.serial_port_combo.setEnabled(is_serial)
+        self.serial_refresh_btn.setEnabled(is_serial)
+        if self.acquisition_source_mode == "Waveshare":
             self.display.set_status("Source: Waveshare live (CH0 EEG, CH1 trigger)")
+        elif is_serial:
+            self._refresh_serial_ports()
+            self.display.set_status("Source: USB Serial microcontroller")
         else:
             self.display.set_status("Source: File replay")
         if self.worker is not None:
@@ -387,12 +413,29 @@ class VERMainWindow(QMainWindow):
     def _set_current_source_mode(self):
         if self.acquisition_source_mode == "Waveshare":
             self.source_combo.setCurrentText("Waveshare Live (CH0/CH1 @ 250 Hz)")
+        elif self.acquisition_source_mode == "Serial":
+            self.source_combo.setCurrentText("USB Serial (microcontroller)")
         else:
             self.source_combo.setCurrentText("File Replay")
 
     def _get_speed_factor(self) -> float | None:
         speed_map = {"Real-time (1×)": 1.0, "Fast (10×)": 10.0, "Maximum speed": None}
         return speed_map.get(self.speed_combo.currentText(), 1.0)
+
+    def _refresh_serial_ports(self) -> None:
+        """Populate the serial port combo with currently available ports."""
+        try:
+            from serial.tools.list_ports import comports
+            ports = [p.device for p in sorted(comports())]
+        except Exception:
+            ports = []
+        current = self.serial_port_combo.currentText()
+        self.serial_port_combo.blockSignals(True)
+        self.serial_port_combo.clear()
+        self.serial_port_combo.addItems(ports)
+        if current in ports:
+            self.serial_port_combo.setCurrentText(current)
+        self.serial_port_combo.blockSignals(False)
 
     def _build_acquisition_source(self, speed_factor: float | None):
         if self.acquisition_source_mode == "Waveshare":
@@ -405,6 +448,22 @@ class VERMainWindow(QMainWindow):
                 adc_gain=HARDWARE_CONFIG["adc_gain"],
                 adc_rate=HARDWARE_CONFIG["adc_rate"],
                 voltage_ref=HARDWARE_CONFIG["voltage_ref"],
+            )
+
+        if self.acquisition_source_mode == "Serial":
+            port = self.serial_port_combo.currentText().strip()
+            if not port:
+                QMessageBox.warning(
+                    self,
+                    "No serial port",
+                    "Please select a serial port from the dropdown (click ⟳ to refresh).",
+                )
+                return None
+            return SerialAcquisitionSource(
+                port=port,
+                baud_rate=SERIAL_CONFIG["baud_rate"],
+                sample_rate=ACQ_CONFIG["sample_rate"],
+                timeout=SERIAL_CONFIG["timeout"],
             )
 
         if not self.data_file:

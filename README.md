@@ -1,6 +1,6 @@
 # VER Analysis Program
 
-This repository contains a modular Python program for VER (Visually Evoked Response) analysis. It replays a raw EEG text file at 250 Hz (or reads live Waveshare ADS1256 data), performs trigger-locked epoch averaging, computes wavelet scalograms, and generates a final summary report.
+This repository contains a modular Python program for VER (Visually Evoked Response) analysis. It replays a raw EEG text file at 250 Hz, reads live Waveshare ADS1256 data on a Raspberry Pi, or streams from any USB-serial microcontroller (e.g. Raspberry Pi Pico, Arduino, Teensy), performs trigger-locked epoch averaging, computes wavelet scalograms, and generates a final summary report.
 
 ## Installation
 
@@ -33,7 +33,7 @@ For live mode, switch **Source** to **Waveshare Live (CH0/CH1 @ 250 Hz)**.
 ## Module Overview
 
 - `ver_config.py`: all tunable parameters (acquisition, file columns, filter, epochs, wavelet).
-- `ver_acquisition.py`: file replay and Waveshare ADS1256 live acquisition sources.
+- `ver_acquisition.py`: file replay, Waveshare ADS1256 live acquisition, and USB serial microcontroller sources.
 - `ver_filter.py`: Butterworth bandpass filter with causal and zero-phase modes.
 - `ver_scope.py`: rising-edge trigger detection, epoch extraction, and running/session averages.
 - `ver_wavelet.py`: CWT/scalogram computation (`pywt.cwt`) for averaged epochs.
@@ -56,9 +56,42 @@ Format definitions are centralized in `FILE_FORMATS` inside `ver_config.py`.
 
 ## Fast Replay Mode
 
-Use the **Source** dropdown to select file replay or Waveshare live mode.
+Use the **Source** dropdown to select file replay, Waveshare live mode, or USB Serial mode.
 For file replay, use the speed dropdown to run replay faster than real-time.
 Sampling rate remains at 250 Hz for all calculations.
+
+## USB Serial Live Mode (microcontroller)
+
+Connect any USB microcontroller (Raspberry Pi Pico, Arduino, Teensy, etc.) that samples the EEG and trigger signals and streams them to the PC over USB-CDC serial.
+
+### Firmware output protocol
+
+The microcontroller must print **one ASCII line per sample** at 115 200 baud (configurable in `SERIAL_CONFIG`):
+
+```
+<trigger>,<eeg_volts>
+```
+
+- `trigger` — integer: `1` on the sample where a flash/stimulus occurred, `0` otherwise.
+- `eeg_volts` — floating-point voltage already scaled to volts by the ADC driver on the microcontroller.
+
+Example lines at 250 Hz:
+
+```
+0,0.1234
+0,-0.0503
+1,0.0021
+0,-0.0318
+```
+
+### Running
+
+1. Flash your microcontroller firmware and connect it via USB.
+2. Select **USB Serial (microcontroller)** from the **Source** dropdown.
+3. The port combo is populated automatically; click **⟳** to refresh if the device was connected after startup.
+4. Select the correct port (e.g. `COM3` on Windows, `/dev/ttyACM0` on Linux) and press **Start**.
+
+Default baud rate and timeout are in `SERIAL_CONFIG` inside `ver_config.py`.
 
 ## Waveshare Live Mode
 

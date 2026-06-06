@@ -1,4 +1,4 @@
-"""Data acquisition module for file replay and live Waveshare streaming."""
+"""Data acquisition module for file replay, live Waveshare streaming, and USB serial microcontrollers."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import Generator, Optional
 
 import numpy as np
 
-from ver_config import ACQ_CONFIG, FILE_CONFIG, HARDWARE_CONFIG
+from ver_config import ACQ_CONFIG, FILE_CONFIG, HARDWARE_CONFIG, SERIAL_CONFIG
 
 
 class FileAcquisitionSimulator:
@@ -203,5 +203,90 @@ class WaveshareAcquisitionSource:
                         time.sleep(sleep_for)
                     elif sleep_for < -sample_interval:
                         next_sample_time = time.perf_counter()
+        finally:
+            self.close()
+
+
+class SerialAcquisitionSource:
+    """Read live EEG/trigger data from a microcontroller over USB serial.
+
+    The microcontroller firmware must send one ASCII line per sample with the
+    trigger flag and EEG voltage separated by a comma::
+
+        <trigger>,<eeg_volts>\\n
+
+    ``trigger`` is an integer: ``1`` on the sample where a flash/stimulus
+    occurred, ``0`` otherwise.  ``eeg_volts`` is a floating-point voltage
+    already scaled to volts by the microcontroller's ADC driver.
+
+    Example lines (at 250 Hz, 115 200 baud)::
+
+        0,0.1234
+        0,-0.0503
+        1,0.0021
+        0,-0.0318
+
+    Any line that cannot be parsed is silently skipped so that occasional
+    transmission errors do not crash the acquisition loop.
+    """
+
+    def __init__(
+        self,
+        port: Optional[str] = None,
+        baud_rate: Optional[int] = None,
+        sample_rate: Optional[float] = None,
+        timeout: Optional[float] = None,
+    ):
+        self.port = str(port if port is not None else SERIAL_CONFIG["port"])
+        self.baud_rate = int(baud_rate if baud_rate is not None else SERIAL_CONFIG["baud_rate"])
+        self.sample_rate = float(sample_rate if sample_rate is not None else ACQ_CONFIG["sample_rate"])
+        self.timeout = float(timeout if timeout is not None else SERIAL_CONFIG.get("timeout", 2.0))
+        self._serial = None
+
+    def _open(self) -> None:
+        if self._serial is not None:
+            return
+        try:
+            import serial  # pyserial
+        except ImportError as exc:
+            raise RuntimeError(
+                "pyserial is not installed. Run: pip install pyserial"
+            ) from exc
+        self._serial = serial.Serial(self.port, baudrate=self.baud_rate, timeout=self.timeout)
+
+    def close(self) -> None:
+        if self._serial is not None:
+            try:
+                self._serial.close()
+            except Exception:
+                pass
+            self._serial = None
+
+    def stream_samples(self) -> Generator[np.ndarray, None, None]:
+        """Yield ``[trigger, eeg_volts]`` arrays read from the serial port.
+
+        Runs until the acquisition is stopped externally (the
+        :class:`AcquisitionWorker` sets ``_running = False`` and the
+        generator is garbage-collected, which closes the port via
+        ``finally``).
+        """
+        self._open()
+        try:
+            while True:
+                line = self._serial.readline()
+                if not line:
+                    # readline() timed out — retry without raising
+                    continue
+                try:
+                    text = line.decode("ascii", errors="ignore").strip()
+                    parts = text.split(",")
+                    if len(parts) < 2:
+                        continue
+                    trigger = float(parts[0])
+                    eeg = float(parts[1])
+                    yield np.asarray([1.0 if trigger else 0.0, eeg], dtype=float)
+                except (ValueError, IndexError):
+                    # Malformed line — skip silently
+                    continue
         finally:
             self.close()
