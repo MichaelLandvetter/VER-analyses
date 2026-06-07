@@ -70,6 +70,31 @@ class VERMainSourceTests(unittest.TestCase):
         self.assertIn('Summary CSV: {summary_csv_name}', self.source)
         self.assertIn('Waveforms CSV: {waveforms_csv_name}', self.source)
 
+    def test_close_event_prompts_save_before_shutdown_and_supports_cancel(self):
+        self.assertIn('def closeEvent(self, event):', self.source)
+        self.assertIn('"Save before exit?"', self.source)
+        self.assertIn('"You have session data. Save a report before exiting?"', self.source)
+        self.assertIn("QMessageBox.StandardButton.Cancel", self.source)
+        self.assertIn("if resp == QMessageBox.StandardButton.Cancel:", self.source)
+        self.assertIn("event.ignore()", self.source)
+        self.assertIn("if resp == QMessageBox.StandardButton.Yes:", self.source)
+        self.assertIn("self.save_report()", self.source)
+
+    def test_close_event_saves_prompt_before_worker_shutdown(self):
+        close_event_start = self.source.index("def closeEvent(self, event):")
+        close_event_source = self.source[close_event_start:]
+        prompt_marker = '"Save before exit?"'
+        shutdown_marker = "self._shutdown_worker()"
+        self.assertIn(prompt_marker, close_event_source)
+        self.assertIn(shutdown_marker, close_event_source)
+        self.assertLess(close_event_source.index(prompt_marker), close_event_source.index(shutdown_marker))
+
+    def test_worker_emits_eof_only_while_running(self):
+        self.assertIn("if self._running:", self.source)
+        self.assertIn("self.eof_reached.emit()", self.source)
+        self.assertIn("def stop(self):", self.source)
+        self.assertIn("self._running = False", self.source)
+
 
 if __name__ == "__main__":
     unittest.main()
