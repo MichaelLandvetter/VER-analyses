@@ -5,10 +5,10 @@ from __future__ import annotations
 import sys
 import time
 import serial
+import serial.tools.list_ports
 from pathlib import Path
 
 import numpy as np
-import serial
 from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QTextOption
 from PyQt6.QtWidgets import (
