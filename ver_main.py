@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import serial
 from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QTextOption
 from PyQt6.QtWidgets import (
@@ -28,8 +29,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ver_acquisition import FileAcquisitionSimulator, SerialAcquisitionSource, WaveshareAcquisitionSource
-from ver_config import ACQ_CONFIG, EPOCH_CONFIG, FILE_CONFIG, FILE_FORMATS, FILTER_CONFIG, HARDWARE_CONFIG, SERIAL_CONFIG
+from ver_acquisition import FileAcquisitionSimulator, SerialAcquisitionSource
+from ver_config import ACQ_CONFIG, EPOCH_CONFIG, FILE_CONFIG, FILE_FORMATS, FILTER_CONFIG, SERIAL_CONFIG
 from ver_display import VERDisplayWidget
 from ver_filter import BandpassFilter
 from ver_peaks import detect_ver_peaks
@@ -282,7 +283,6 @@ class VERMainWindow(QMainWindow):
         self.source_combo = QComboBox()
         self.source_combo.addItems([
             "File Replay",
-            "Waveshare Live (CH0/CH1 @ 250 Hz)",
             "USB Serial (microcontroller)",
         ])
         self.source_combo.currentTextChanged.connect(self._on_source_mode_changed)
@@ -390,9 +390,7 @@ class VERMainWindow(QMainWindow):
         self._start_worker(self._get_speed_factor())
 
     def _on_source_mode_changed(self, mode: str):
-        if mode.startswith("Waveshare"):
-            self.acquisition_source_mode = "Waveshare"
-        elif mode.startswith("USB Serial"):
+        if mode.startswith("USB Serial"):
             self.acquisition_source_mode = "Serial"
         else:
             self.acquisition_source_mode = "File"
@@ -403,9 +401,7 @@ class VERMainWindow(QMainWindow):
         self.format_combo.setEnabled(is_file)
         self.serial_port_combo.setEnabled(is_serial)
         self.serial_refresh_btn.setEnabled(is_serial)
-        if self.acquisition_source_mode == "Waveshare":
-            self.display.set_status("Source: Waveshare live (CH0 EEG, CH1 trigger)")
-        elif is_serial:
+        if is_serial:
             self._refresh_serial_ports()
             self.display.set_status("Source: USB Serial microcontroller")
         else:
@@ -414,9 +410,7 @@ class VERMainWindow(QMainWindow):
             self._shutdown_worker()
 
     def _set_current_source_mode(self):
-        if self.acquisition_source_mode == "Waveshare":
-            self.source_combo.setCurrentText("Waveshare Live (CH0/CH1 @ 250 Hz)")
-        elif self.acquisition_source_mode == "Serial":
+        if self.acquisition_source_mode == "Serial":
             self.source_combo.setCurrentText("USB Serial (microcontroller)")
         else:
             self.source_combo.setCurrentText("File Replay")
@@ -428,8 +422,10 @@ class VERMainWindow(QMainWindow):
     def _refresh_serial_ports(self) -> None:
         """Populate the serial port combo with currently available ports."""
         try:
-            from serial.tools.list_ports import comports
-            ports = sorted((p.device for p in comports() if getattr(p, "device", None)), key=str.casefold)
+            ports = sorted(
+                (p.device for p in serial.tools.list_ports.comports() if getattr(p, "device", None)),
+                key=str.casefold,
+            )
         except Exception:
             ports = []
         current = self.serial_port_combo.currentText().strip()
@@ -446,18 +442,6 @@ class VERMainWindow(QMainWindow):
         self.serial_port_combo.blockSignals(False)
 
     def _build_acquisition_source(self, speed_factor: float | None):
-        if self.acquisition_source_mode == "Waveshare":
-            return WaveshareAcquisitionSource(
-                sample_rate=ACQ_CONFIG["sample_rate"],
-                waveshare_dir=str(Path(__file__).with_name(HARDWARE_CONFIG["waveshare_dir"])),
-                eeg_channel=HARDWARE_CONFIG["eeg_channel"],
-                trigger_channel=HARDWARE_CONFIG["trigger_channel"],
-                trigger_threshold=HARDWARE_CONFIG["trigger_threshold"],
-                adc_gain=HARDWARE_CONFIG["adc_gain"],
-                adc_rate=HARDWARE_CONFIG["adc_rate"],
-                voltage_ref=HARDWARE_CONFIG["voltage_ref"],
-            )
-
         if self.acquisition_source_mode == "Serial":
             port = self.serial_port_combo.currentText().strip()
             if not port:
@@ -671,7 +655,7 @@ class VERMainWindow(QMainWindow):
     def save_report(self):
         report_input = self.data_file
         if report_input is None:
-            report_input = str(Path.cwd() / "waveshare_live_report.txt")
+            report_input = str(Path.cwd() / "serial_live_report.txt")
         result = save_ver_report(
             report_input,
             self.scope.session_averages,

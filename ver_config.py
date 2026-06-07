@@ -6,19 +6,6 @@ ACQ_CONFIG = {
     "source_mode": "File",
 }
 
-HARDWARE_CONFIG = {
-    "waveshare_dir": "Waveshare",
-    "eeg_channel": 0,
-    "trigger_channel": 1,
-    "trigger_threshold": 1.0,
-    "trigger_high_threshold": 1.2,
-    "trigger_low_threshold": 0.4,
-    "trigger_min_interval_ms": 80.0,
-    "adc_gain": "ADS1256_GAIN_1",
-    "adc_rate": "ADS1256_500SPS",  # 500 SPS gives ~250 Hz per channel when alternating CH0/CH1 reads
-    "voltage_ref": 5.0,
-}
-
 FILE_FORMATS = {
     "SD-card": {
         "delimiter": "\t",

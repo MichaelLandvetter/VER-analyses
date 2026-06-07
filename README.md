@@ -1,6 +1,6 @@
 # VER Analysis Program
 
-This repository contains a modular Python program for VER (Visually Evoked Response) analysis. It replays a raw EEG text file at 250 Hz, reads live Waveshare ADS1256 data on a Raspberry Pi, or streams from any USB-serial microcontroller (e.g. Raspberry Pi Pico, Arduino, Teensy), performs trigger-locked epoch averaging, computes wavelet scalograms, and generates a final summary report.
+This repository contains a modular Python program for VER (Visually Evoked Response) analysis. It replays a raw EEG text file at 250 Hz or streams from any USB-serial microcontroller (e.g. Raspberry Pi Pico, Arduino, Teensy), performs trigger-locked epoch averaging, computes wavelet scalograms, and generates a final summary report.
 
 ## Installation
 
@@ -28,12 +28,12 @@ python ver_main.py
 ```
 
 At startup, choose a `.txt` raw data file (for example `RAW_files_combined.txt`).
-For live mode, switch **Source** to **Waveshare Live (CH0/CH1 @ 250 Hz)**.
+For live mode, switch **Source** to **USB Serial (microcontroller)**.
 
 ## Module Overview
 
 - `ver_config.py`: all tunable parameters (acquisition, file columns, filter, epochs, wavelet).
-- `ver_acquisition.py`: file replay, Waveshare ADS1256 live acquisition, and USB serial microcontroller sources.
+- `ver_acquisition.py`: file replay and USB serial microcontroller sources.
 - `ver_filter.py`: Butterworth bandpass filter with causal and zero-phase modes.
 - `ver_scope.py`: rising-edge trigger detection, epoch extraction, and running/session averages.
 - `ver_wavelet.py`: CWT/scalogram computation (`pywt.cwt`) for averaged epochs.
@@ -56,7 +56,7 @@ Format definitions are centralized in `FILE_FORMATS` inside `ver_config.py`.
 
 ## Fast Replay Mode
 
-Use the **Source** dropdown to select file replay, Waveshare live mode, or USB Serial mode.
+Use the **Source** dropdown to select file replay or USB Serial mode.
 For file replay, use the speed dropdown to run replay faster than real-time.
 Sampling rate remains at 250 Hz for all calculations.
 
@@ -85,17 +85,6 @@ The USB serial source expects a framed binary packet at 115 200 baud (configurab
 4. Select the correct port (e.g. `COM3` on Windows, `/dev/ttyACM0` on Linux) and press **Start**.
 
 Default baud rate and timeout are in `SERIAL_CONFIG` inside `ver_config.py`.
-
-## Waveshare Live Mode
-
-- Default channels: CH0 = EEG, CH1 = trigger.
-- Trigger uses Schmitt-style hysteresis for robust edge detection in noisy environments:
-  - `HARDWARE_CONFIG["trigger_high_threshold"]` (arm high)
-  - `HARDWARE_CONFIG["trigger_low_threshold"]` (re-arm low)
-  - `HARDWARE_CONFIG["trigger_min_interval_ms"]` (minimum interval between accepted trigger pulses)
-- `HARDWARE_CONFIG["trigger_threshold"]` is retained for compatibility.
-- The ADS1256 data-rate default is set to 500 SPS in `HARDWARE_CONFIG`, which provides an effective 250 Hz output per channel when alternating CH0/CH1 reads.
-- SPI speed is configured in `Waveshare/config.py` (`SPI.max_speed_hz = 1000000`).
 
 ## Output Report
 
