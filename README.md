@@ -1,6 +1,6 @@
 # VER Analysis Program
 
-This repository contains a modular Python program for VER (Visually Evoked Response) analysis. It replays a raw EEG text file at 250 Hz to simulate live acquisition, performs trigger-locked epoch averaging, computes wavelet scalograms, and generates a final summary report.
+This repository contains a modular Python program for VER (Visually Evoked Response) analysis. It replays a raw EEG text file at 250 Hz or streams from any USB-serial microcontroller (e.g. Raspberry Pi Pico, Arduino, Teensy), performs trigger-locked epoch averaging, computes wavelet scalograms, and generates a final summary report.
 
 ## Installation
 
@@ -28,11 +28,12 @@ python ver_main.py
 ```
 
 At startup, choose a `.txt` raw data file (for example `RAW_files_combined.txt`).
+For live mode, switch **Source** to **USB Serial (microcontroller)**.
 
 ## Module Overview
 
 - `ver_config.py`: all tunable parameters (acquisition, file columns, filter, epochs, wavelet).
-- `ver_acquisition.py`: file-based simulator yielding one sample row at a time at 250 Hz.
+- `ver_acquisition.py`: file replay and USB serial microcontroller sources.
 - `ver_filter.py`: Butterworth bandpass filter with causal and zero-phase modes.
 - `ver_scope.py`: rising-edge trigger detection, epoch extraction, and running/session averages.
 - `ver_wavelet.py`: CWT/scalogram computation (`pywt.cwt`) for averaged epochs.
@@ -55,8 +56,35 @@ Format definitions are centralized in `FILE_FORMATS` inside `ver_config.py`.
 
 ## Fast Replay Mode
 
-Use the **Fast mode** checkbox in the Controls panel to run replay faster than real-time.
+Use the **Source** dropdown to select file replay or USB Serial mode.
+For file replay, use the speed dropdown to run replay faster than real-time.
 Sampling rate remains at 250 Hz for all calculations.
+
+## USB Serial Live Mode (microcontroller)
+
+Connect any USB microcontroller (Raspberry Pi Pico, Arduino, Teensy, etc.) that samples the EEG and trigger signals and streams them to the PC over USB-CDC serial.
+
+### Firmware output protocol
+
+The USB serial source expects a framed binary packet at 115 200 baud (configurable in `SERIAL_CONFIG`):
+
+```
+[0xA5, 0x5A][trigger:uint16][eeg:float32][0x01]
+```
+
+- packet size: 9 bytes
+- endianness: little-endian (`<2sHf1s`)
+- trigger is auto-normalized with hysteresis before scope edge detection, so either digital (0/1) or analog-style trigger levels can be used
+- optional serial trigger hysteresis thresholds can be configured in `SERIAL_CONFIG` with `trigger_high_threshold` and `trigger_low_threshold` (normalized 0..1)
+
+### Running
+
+1. Flash your microcontroller firmware and connect it via USB.
+2. Select **USB Serial (microcontroller)** from the **Source** dropdown.
+3. The port combo is populated automatically; click **⟳** to refresh if the device was connected after startup.
+4. Select the correct port (e.g. `COM3` on Windows, `/dev/ttyACM0` on Linux) and press **Start**.
+
+Default baud rate and timeout are in `SERIAL_CONFIG` inside `ver_config.py`.
 
 ## Output Report
 

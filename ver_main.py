@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import sys
 import time
+import serial
+import serial.tools.list_ports
 from pathlib import Path
 
 import numpy as np
@@ -28,8 +30,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ver_acquisition import FileAcquisitionSimulator
-from ver_config import ACQ_CONFIG, EPOCH_CONFIG, FILE_CONFIG, FILE_FORMATS, FILTER_CONFIG
+from ver_acquisition import FileAcquisitionSimulator, SerialAcquisitionSource
+from ver_config import ACQ_CONFIG, EPOCH_CONFIG, FILE_CONFIG, FILE_FORMATS, FILTER_CONFIG, SERIAL_CONFIG
 from ver_display import VERDisplayWidget
 from ver_filter import BandpassFilter
 from ver_peaks import detect_ver_peaks
@@ -164,33 +166,44 @@ class AcquisitionWorker(QObject):
     eof_reached = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, file_path: str, sample_rate: float, speed_factor: float | None):
+    def __init__(self, source):
         super().__init__()
-        self.file_path = file_path
-        self.sample_rate = sample_rate
-        self.speed_factor = speed_factor
+        self.source = source
         self._running = False
         self._paused = True
+        self._batch_size = 8
+        self._batch_max_latency_s = 0.03
 
     def run(self):
         try:
-            simulator = FileAcquisitionSimulator(
-                self.file_path,
-                sample_rate=self.sample_rate,
-                speed_factor=self.speed_factor,
-            )
             self._running = True
-            for row in simulator.stream_samples():
+            batch = []
+            last_emit = time.perf_counter()
+            for row in self.source.stream_samples():
                 if not self._running:
                     break
                 while self._paused and self._running:
+                    if batch:
+                        self.sample_ready.emit(np.vstack(batch))
+                        batch = []
                     time.sleep(0.02)
                 if not self._running:
                     break
-                self.sample_ready.emit(np.asarray(row, dtype=float))
+                batch.append(np.asarray(row, dtype=float))
+                now = time.perf_counter()
+                if len(batch) >= self._batch_size or (now - last_emit) >= self._batch_max_latency_s:
+                    self.sample_ready.emit(np.vstack(batch))
+                    batch = []
+                    last_emit = now
+            if batch:
+                self.sample_ready.emit(np.vstack(batch))
             self.eof_reached.emit()
         except Exception as exc:  # pragma: no cover
             self.error.emit(str(exc))
+        finally:
+            close_fn = getattr(self.source, "close", None)
+            if callable(close_fn):
+                close_fn()
 
     def start_stream(self):
         self._paused = False
@@ -212,6 +225,7 @@ class VERMainWindow(QMainWindow):
         self.data_file = None
         self.worker = None
         self.worker_thread = None
+        self.acquisition_source_mode = ACQ_CONFIG.get("source_mode", "File")
         self.session_wavelets = []
         self.session_wavelet_freqs = None
         self.session_labels = []
@@ -267,15 +281,36 @@ class VERMainWindow(QMainWindow):
         self.speed_combo = QComboBox()
         self.speed_combo.addItems(["Real-time (1×)", "Fast (10×)", "Maximum speed"])
         self.speed_combo.setToolTip("Replay speed")
+        self.source_combo = QComboBox()
+        self.source_combo.addItems([
+            "File Replay",
+            "USB Serial (microcontroller)",
+        ])
+        self.source_combo.currentTextChanged.connect(self._on_source_mode_changed)
         self.start_btn.clicked.connect(self.start_acquisition)
         self.stop_btn.clicked.connect(self.stop_acquisition)
         self.reset_btn.clicked.connect(self.reset_all)
         self.save_btn.clicked.connect(self.save_report)
+        self.serial_port_combo = QComboBox()
+        self.serial_port_combo.setMinimumWidth(130)
+        self.serial_port_combo.setToolTip("USB serial port (e.g. COM3 or /dev/ttyUSB0)")
+        self.serial_port_combo.setEditable(True)
+        self.serial_port_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.serial_port_combo.setPlaceholderText("Select or type port")
+        self.serial_port_combo.setEnabled(False)
+        self.serial_refresh_btn = QPushButton("⟳")
+        self.serial_refresh_btn.setFixedWidth(28)
+        self.serial_refresh_btn.setToolTip("Refresh serial port list")
+        self.serial_refresh_btn.setEnabled(False)
+        self.serial_refresh_btn.clicked.connect(self._refresh_serial_ports)
         run_layout.addWidget(self.start_btn)
         run_layout.addWidget(self.stop_btn)
         run_layout.addWidget(self.reset_btn)
         run_layout.addWidget(self.save_btn)
+        run_layout.addWidget(self.source_combo)
         run_layout.addWidget(self.speed_combo)
+        run_layout.addWidget(self.serial_port_combo)
+        run_layout.addWidget(self.serial_refresh_btn)
 
         self.progress_label = QLabel("Minute 0/10 | Flash 0/120")
 
@@ -291,6 +326,7 @@ class VERMainWindow(QMainWindow):
 
         self.setCentralWidget(central)
         self._set_current_format()
+        self._set_current_source_mode()
 
     def _build_menu(self):
         menubar = self.menuBar()
@@ -354,17 +390,91 @@ class VERMainWindow(QMainWindow):
         self._shutdown_worker()
         self._start_worker(self._get_speed_factor())
 
+    def _on_source_mode_changed(self, mode: str):
+        if mode.startswith("USB Serial"):
+            self.acquisition_source_mode = "Serial"
+        else:
+            self.acquisition_source_mode = "File"
+        ACQ_CONFIG["source_mode"] = self.acquisition_source_mode
+        is_file = self.acquisition_source_mode == "File"
+        is_serial = self.acquisition_source_mode == "Serial"
+        self.speed_combo.setEnabled(is_file)
+        self.format_combo.setEnabled(is_file)
+        self.serial_port_combo.setEnabled(is_serial)
+        self.serial_refresh_btn.setEnabled(is_serial)
+        if is_serial:
+            self._refresh_serial_ports()
+            self.display.set_status("Source: USB Serial microcontroller")
+        else:
+            self.display.set_status("Source: File replay")
+        if self.worker is not None:
+            self._shutdown_worker()
+
+    def _set_current_source_mode(self):
+        if self.acquisition_source_mode == "Serial":
+            self.source_combo.setCurrentText("USB Serial (microcontroller)")
+        else:
+            self.source_combo.setCurrentText("File Replay")
+
     def _get_speed_factor(self) -> float | None:
         speed_map = {"Real-time (1×)": 1.0, "Fast (10×)": 10.0, "Maximum speed": None}
         return speed_map.get(self.speed_combo.currentText(), 1.0)
 
-    def _start_worker(self, speed_factor: float | None = 1.0):
+    def _refresh_serial_ports(self) -> None:
+        """Populate the serial port combo with currently available ports."""
+        try:
+            ports = sorted(
+                (p.device for p in serial.tools.list_ports.comports() if getattr(p, "device", None)),
+                key=str.casefold,
+            )
+        except Exception:
+            ports = []
+        current = self.serial_port_combo.currentText().strip()
+        configured_port = str(SERIAL_CONFIG.get("port", "")).strip()
+        if configured_port and configured_port not in ports:
+            ports.append(configured_port)
+        self.serial_port_combo.blockSignals(True)
+        self.serial_port_combo.clear()
+        self.serial_port_combo.addItems(ports)
+        if current in ports:
+            self.serial_port_combo.setCurrentText(current)
+        elif current:
+            self.serial_port_combo.setEditText(current)
+        self.serial_port_combo.blockSignals(False)
+
+    def _build_acquisition_source(self, speed_factor: float | None):
+        if self.acquisition_source_mode == "Serial":
+            port = self.serial_port_combo.currentText().strip()
+            if not port:
+                QMessageBox.warning(
+                    self,
+                    "No serial port",
+                    "Please select a serial port from the dropdown (click ⟳ to refresh).",
+                )
+                return None
+            return SerialAcquisitionSource(
+                port=port,
+                baud_rate=SERIAL_CONFIG["baud_rate"],
+                sample_rate=ACQ_CONFIG["sample_rate"],
+                timeout=SERIAL_CONFIG["timeout"],
+            )
+
         if not self.data_file:
             QMessageBox.warning(self, "No file", "Please select a data file first.")
+            return None
+        return FileAcquisitionSimulator(
+            self.data_file,
+            sample_rate=ACQ_CONFIG["sample_rate"],
+            speed_factor=speed_factor,
+        )
+
+    def _start_worker(self, speed_factor: float | None = 1.0):
+        source = self._build_acquisition_source(speed_factor)
+        if source is None:
             return
 
         self.worker_thread = QThread(self)
-        self.worker = AcquisitionWorker(self.data_file, ACQ_CONFIG["sample_rate"], speed_factor)
+        self.worker = AcquisitionWorker(source)
         self.worker.moveToThread(self.worker_thread)
 
         self.worker_thread.started.connect(self.worker.run)
@@ -428,8 +538,16 @@ class VERMainWindow(QMainWindow):
         self.display.set_status(f"Filter updated: {low:.1f}-{high:.1f} Hz")
 
     def _handle_sample(self, row: np.ndarray):
-        trigger = bool(row[0])
-        eeg = float(row[1])
+        samples = np.asarray(row, dtype=float)
+        if samples.ndim == 1:
+            self._handle_single_sample(samples)
+            return
+        for sample in samples:
+            self._handle_single_sample(sample)
+
+    def _handle_single_sample(self, sample: np.ndarray):
+        trigger = bool(sample[0])
+        eeg = float(sample[1])
         filtered = self.bandpass.process_sample(eeg)
 
         scope_result = self.scope.process_sample(trigger, eeg)
@@ -536,11 +654,11 @@ class VERMainWindow(QMainWindow):
         self.format_combo.setCurrentText(default_name)
 
     def save_report(self):
-        if not self.data_file:
-            QMessageBox.warning(self, "No file", "Please select a data file first.")
-            return
+        report_input = self.data_file
+        if report_input is None:
+            report_input = str(Path.cwd() / "serial_live_report.txt")
         result = save_ver_report(
-            self.data_file,
+            report_input,
             self.scope.session_averages,
             self.scope.epoch_time_ms,
             session_wavelets=self.session_wavelets if self.session_wavelets else None,

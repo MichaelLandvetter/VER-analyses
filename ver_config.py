@@ -3,6 +3,7 @@
 ACQ_CONFIG = {
     "sample_rate": 250,
     "simulate_realtime": True,
+    "source_mode": "File",
 }
 
 FILE_FORMATS = {
@@ -48,6 +49,20 @@ SNR_THRESHOLD = 2.0
 BASELINE_START_MS = -100
 BASELINE_END_MS = 0
 
+SERIAL_CONFIG = {
+    # USB serial port the microcontroller is connected to.
+    # Windows: "COM3", "COM4", … — Linux/macOS: "/dev/ttyUSB0", "/dev/ttyACM0", …
+    "port": "COM3",
+    # Baud rate must match the firmware setting on the microcontroller.
+    "baud_rate": 115200,
+    # readline() timeout in seconds.  If no byte arrives within this window
+    # the read returns an empty bytes object and the loop retries.
+    "timeout": 2.0,
+    # Hysteresis thresholds (normalized 0..1) used after trigger auto-normalization.
+    "trigger_high_threshold": 0.7,
+    "trigger_low_threshold": 0.3,
+}
+
 WAVELET_CONFIG = {
     "wavelet": "cmor1.5-1.0",
     "freq_min": 5.0,
@@ -58,4 +73,8 @@ WAVELET_CONFIG = {
 DISPLAY_CONFIG = {
     "scroll_seconds": 10,
     "max_epoch_overlays": 120,
+    # Maximum frames per second for the scroll panel redraws.
+    # Caps setData calls so fast replay (e.g. 10×) does not overwhelm the Qt paint
+    # pipeline on low-power hardware such as a Raspberry Pi 4B.
+    "scroll_max_fps": 30,
 }
