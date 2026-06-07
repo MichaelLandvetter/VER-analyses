@@ -37,9 +37,11 @@ class VERAcquisitionSourceTests(unittest.TestCase):
 
     def test_serial_source_parses_binary_packets(self):
         self.assertIn("def _try_parse_binary_sample(self) -> Optional[np.ndarray]:", self.source)
+        self.assertIn("def _decode_serial_trigger(self, trigger_state: int) -> float:", self.source)
         self.assertIn("self._binary_header = b\"\\xA5\\x5A\"", self.source)
         self.assertIn("self._binary_packet_size = 9", self.source)
         self.assertIn("struct.unpack(\"<2sHf1s\", packet)", self.source)
+        self.assertIn("trigger_level = self._decode_serial_trigger(trigger_state)", self.source)
 
     def test_serial_source_skips_malformed_packets(self):
         self.assertIn("if packet[-1] != self._binary_footer:", self.source)
@@ -49,7 +51,9 @@ class VERAcquisitionSourceTests(unittest.TestCase):
         self.assertIn("self._serial.close()", self.source)
 
     def test_serial_source_yields_trigger_eeg_array(self):
-        self.assertIn("return np.asarray([1.0 if trigger_state else 0.0, float(eeg)], dtype=float)", self.source)
+        self.assertIn("return np.asarray([trigger_level, float(eeg)], dtype=float)", self.source)
+        self.assertIn("self._serial_trigger_high_threshold", self.source)
+        self.assertIn("self._serial_trigger_low_threshold", self.source)
 
     def test_serial_config_is_imported(self):
         self.assertIn("SERIAL_CONFIG", self.source)

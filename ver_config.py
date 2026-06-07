@@ -71,6 +71,9 @@ SERIAL_CONFIG = {
     # readline() timeout in seconds.  If no byte arrives within this window
     # the read returns an empty bytes object and the loop retries.
     "timeout": 2.0,
+    # Hysteresis thresholds (normalized 0..1) used after trigger auto-normalization.
+    "trigger_high_threshold": 0.7,
+    "trigger_low_threshold": 0.3,
 }
 
 WAVELET_CONFIG = {

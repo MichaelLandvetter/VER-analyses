@@ -74,7 +74,8 @@ The USB serial source expects a framed binary packet at 115 200 baud (configurab
 
 - packet size: 9 bytes
 - endianness: little-endian (`<2sHf1s`)
-- any nonzero `trigger` value is treated as a trigger pulse
+- trigger is auto-normalized with hysteresis before scope edge detection, so either digital (0/1) or analog-style trigger levels can be used
+- optional serial trigger hysteresis thresholds can be configured in `SERIAL_CONFIG` with `trigger_high_threshold` and `trigger_low_threshold` (normalized 0..1)
 
 ### Running
 

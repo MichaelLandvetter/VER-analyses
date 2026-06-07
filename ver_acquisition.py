@@ -237,6 +237,29 @@ class SerialAcquisitionSource:
         self._binary_header = b"\xA5\x5A"
         self._binary_footer = 0x01
         self._binary_packet_size = 9
+        self._serial_trigger_high = False
+        self._serial_trigger_floor = 0.0
+        self._serial_trigger_ceil = 1.0
+        self._serial_trigger_high_threshold = float(SERIAL_CONFIG.get("trigger_high_threshold", 0.7))
+        self._serial_trigger_low_threshold = float(SERIAL_CONFIG.get("trigger_low_threshold", 0.3))
+
+    def _decode_serial_trigger(self, trigger_state: int) -> float:
+        raw_level = max(0.0, float(trigger_state))
+        self._serial_trigger_floor = min(self._serial_trigger_floor, raw_level)
+        self._serial_trigger_ceil = max(self._serial_trigger_ceil, raw_level)
+        span = self._serial_trigger_ceil - self._serial_trigger_floor
+        if span > 0:
+            normalized_level = (raw_level - self._serial_trigger_floor) / span
+        else:
+            normalized_level = 0.0
+
+        if self._serial_trigger_high:
+            if normalized_level <= self._serial_trigger_low_threshold:
+                self._serial_trigger_high = False
+        elif normalized_level >= self._serial_trigger_high_threshold:
+            self._serial_trigger_high = True
+
+        return 1.0 if self._serial_trigger_high else 0.0
 
     def _open(self) -> None:
         if self._serial is not None:
@@ -280,7 +303,8 @@ class SerialAcquisitionSource:
             return None
 
         del self._buffer[: self._binary_packet_size]
-        return np.asarray([1.0 if trigger_state else 0.0, float(eeg)], dtype=float)
+        trigger_level = self._decode_serial_trigger(trigger_state)
+        return np.asarray([trigger_level, float(eeg)], dtype=float)
 
     def stream_samples(self) -> Generator[np.ndarray, None, None]:
         """Yield ``[trigger, eeg_volts]`` arrays read from the serial port.
