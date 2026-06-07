@@ -31,14 +31,14 @@ class VERAcquisitionSourceTests(unittest.TestCase):
 
     def test_serial_source_parses_ascii_trigger_eeg_samples(self):
         self.assertIn("def _try_parse_ascii_sample(self) -> Optional[np.ndarray]:", self.source)
-        self.assertIn("newline_index = self._buffer.find(b\"\\\\n\")", self.source)
+        self.assertIn("newline_index = self._buffer.find(b\"\\n\")", self.source)
         self.assertIn("parts = text.split(\",\")", self.source)
         self.assertIn("trigger = float(parts[0])", self.source)
         self.assertIn("eeg = float(parts[1])", self.source)
 
     def test_serial_source_parses_binary_packets(self):
         self.assertIn("def _try_parse_binary_sample(self) -> Optional[np.ndarray]:", self.source)
-        self.assertIn("self._binary_header = b\"\\\\xA5\\\\x5A\"", self.source)
+        self.assertIn("self._binary_header = b\"\\xA5\\x5A\"", self.source)
         self.assertIn("self._binary_packet_size = 9", self.source)
         self.assertIn("struct.unpack(\"<2sHf1s\", packet)", self.source)
 
