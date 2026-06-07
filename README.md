@@ -66,26 +66,15 @@ Connect any USB microcontroller (Raspberry Pi Pico, Arduino, Teensy, etc.) that 
 
 ### Firmware output protocol
 
-The USB serial source supports either protocol at 115 200 baud (configurable in `SERIAL_CONFIG`):
+The USB serial source expects a framed binary packet at 115 200 baud (configurable in `SERIAL_CONFIG`):
 
-1. **ASCII CSV (legacy)** — one line per sample:
+```
+[0xA5, 0x5A][trigger:uint16][eeg:float32][0x01]
+```
 
-   ```
-   <trigger>,<eeg_volts>
-   ```
-
-   - `trigger` — integer: `1` on the sample where a flash/stimulus occurred, `0` otherwise.
-   - `eeg_volts` — floating-point voltage already scaled by the microcontroller.
-
-2. **Framed binary packet (recommended)** — one fixed-size packet per sample:
-
-   ```
-   [0xA5, 0x5A][trigger:uint16][eeg:float32][0x01]
-   ```
-
-   - packet size: 9 bytes
-   - endianness: little-endian (`<2sHf1s`)
-   - any nonzero `trigger` value is treated as a trigger pulse
+- packet size: 9 bytes
+- endianness: little-endian (`<2sHf1s`)
+- any nonzero `trigger` value is treated as a trigger pulse
 
 ### Running
 

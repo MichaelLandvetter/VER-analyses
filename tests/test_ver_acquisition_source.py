@@ -29,12 +29,11 @@ class VERAcquisitionSourceTests(unittest.TestCase):
         self.assertIn("import serial  # pyserial", self.source)
         self.assertIn("serial.Serial(self.port, baudrate=self.baud_rate, timeout=self.timeout)", self.source)
 
-    def test_serial_source_parses_ascii_trigger_eeg_samples(self):
-        self.assertIn("def _try_parse_ascii_sample(self) -> Optional[np.ndarray]:", self.source)
-        self.assertIn("newline_index = self._buffer.find(b\"\\n\")", self.source)
-        self.assertIn("parts = text.split(\",\")", self.source)
-        self.assertIn("trigger = float(parts[0])", self.source)
-        self.assertIn("eeg = float(parts[1])", self.source)
+    def test_serial_source_is_binary_only(self):
+        self.assertNotIn("def _try_parse_ascii_sample(self) -> Optional[np.ndarray]:", self.source)
+        self.assertNotIn("parts = text.split(\",\")", self.source)
+        self.assertNotIn("trigger = float(parts[0])", self.source)
+        self.assertNotIn("eeg = float(parts[1])", self.source)
 
     def test_serial_source_parses_binary_packets(self):
         self.assertIn("def _try_parse_binary_sample(self) -> Optional[np.ndarray]:", self.source)
@@ -42,8 +41,7 @@ class VERAcquisitionSourceTests(unittest.TestCase):
         self.assertIn("self._binary_packet_size = 9", self.source)
         self.assertIn("struct.unpack(\"<2sHf1s\", packet)", self.source)
 
-    def test_serial_source_skips_malformed_packets_or_lines(self):
-        self.assertIn("except (ValueError, IndexError):", self.source)
+    def test_serial_source_skips_malformed_packets(self):
         self.assertIn("if packet[-1] != self._binary_footer:", self.source)
 
     def test_serial_source_has_close_method(self):
@@ -51,7 +49,7 @@ class VERAcquisitionSourceTests(unittest.TestCase):
         self.assertIn("self._serial.close()", self.source)
 
     def test_serial_source_yields_trigger_eeg_array(self):
-        self.assertIn("yield np.asarray([1.0 if trigger else 0.0, eeg], dtype=float)", self.source)
+        self.assertIn("return np.asarray([1.0 if trigger_state else 0.0, float(eeg)], dtype=float)", self.source)
 
     def test_serial_config_is_imported(self):
         self.assertIn("SERIAL_CONFIG", self.source)

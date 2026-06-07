@@ -211,20 +211,11 @@ class WaveshareAcquisitionSource:
 class SerialAcquisitionSource:
     """Read live EEG/trigger data from a microcontroller over USB serial.
 
-    Supports two serial protocols:
-
-    1) ASCII CSV (legacy)::
-
-        <trigger>,<eeg_volts>\\n
-
-       ``trigger`` is an integer: ``1`` on the sample where a flash/stimulus
-       occurred, ``0`` otherwise. ``eeg_volts`` is a floating-point voltage.
-
-    2) Framed binary packet (little-endian)::
+    Expects framed binary packets (little-endian)::
 
         [0xA5, 0x5A][trigger:uint16][eeg:float32][0x01]
 
-       This packet is 9 bytes total and keeps trigger/EEG aligned per sample.
+    This packet is 9 bytes total and keeps trigger/EEG aligned per sample.
 
     Malformed data is skipped so occasional transmission errors do not crash
     the acquisition loop.
@@ -291,25 +282,6 @@ class SerialAcquisitionSource:
         del self._buffer[: self._binary_packet_size]
         return np.asarray([1.0 if trigger_state else 0.0, float(eeg)], dtype=float)
 
-    def _try_parse_ascii_sample(self) -> Optional[np.ndarray]:
-        newline_index = self._buffer.find(b"\n")
-        if newline_index < 0:
-            return None
-        line = bytes(self._buffer[:newline_index])
-        del self._buffer[: newline_index + 1]
-        if not line:
-            return None
-        try:
-            text = line.decode("ascii", errors="ignore").strip()
-            parts = text.split(",")
-            if len(parts) < 2:
-                return None
-            trigger = float(parts[0])
-            eeg = float(parts[1])
-            return np.asarray([1.0 if trigger else 0.0, eeg], dtype=float)
-        except (ValueError, IndexError):
-            return None
-
     def stream_samples(self) -> Generator[np.ndarray, None, None]:
         """Yield ``[trigger, eeg_volts]`` arrays read from the serial port.
 
@@ -333,12 +305,6 @@ class SerialAcquisitionSource:
                     if sample is not None:
                         yield sample
                         continue
-
-                    if self._binary_header not in self._buffer:
-                        sample = self._try_parse_ascii_sample()
-                        if sample is not None:
-                            yield sample
-                            continue
                     break
         finally:
             self.close()
