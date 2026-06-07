@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 import importlib
+import struct
 import sys
 from pathlib import Path
 from typing import Generator, Optional
@@ -210,24 +211,23 @@ class WaveshareAcquisitionSource:
 class SerialAcquisitionSource:
     """Read live EEG/trigger data from a microcontroller over USB serial.
 
-    The microcontroller firmware must send one ASCII line per sample with the
-    trigger flag and EEG voltage separated by a comma::
+    Supports two serial protocols:
+
+    1) ASCII CSV (legacy)::
 
         <trigger>,<eeg_volts>\\n
 
-    ``trigger`` is an integer: ``1`` on the sample where a flash/stimulus
-    occurred, ``0`` otherwise.  ``eeg_volts`` is a floating-point voltage
-    already scaled to volts by the microcontroller's ADC driver.
+       ``trigger`` is an integer: ``1`` on the sample where a flash/stimulus
+       occurred, ``0`` otherwise. ``eeg_volts`` is a floating-point voltage.
 
-    Example lines (at 250 Hz, 115 200 baud)::
+    2) Framed binary packet (little-endian)::
 
-        0,0.1234
-        0,-0.0503
-        1,0.0021
-        0,-0.0318
+        [0xA5, 0x5A][trigger:uint16][eeg:float32][0x01]
 
-    Any line that cannot be parsed is silently skipped so that occasional
-    transmission errors do not crash the acquisition loop.
+       This packet is 9 bytes total and keeps trigger/EEG aligned per sample.
+
+    Malformed data is skipped so occasional transmission errors do not crash
+    the acquisition loop.
     """
 
     def __init__(
@@ -242,6 +242,10 @@ class SerialAcquisitionSource:
         self.sample_rate = float(sample_rate if sample_rate is not None else ACQ_CONFIG["sample_rate"])
         self.timeout = float(timeout if timeout is not None else SERIAL_CONFIG.get("timeout", 2.0))
         self._serial = None
+        self._buffer = bytearray()
+        self._binary_header = b"\xA5\x5A"
+        self._binary_footer = 0x01
+        self._binary_packet_size = 9
 
     def _open(self) -> None:
         if self._serial is not None:
@@ -262,6 +266,50 @@ class SerialAcquisitionSource:
                 pass
             self._serial = None
 
+    def _try_parse_binary_sample(self) -> Optional[np.ndarray]:
+        header_index = self._buffer.find(self._binary_header)
+        if header_index < 0:
+            if len(self._buffer) > 1:
+                del self._buffer[:-1]
+            return None
+        if header_index > 0:
+            del self._buffer[:header_index]
+        if len(self._buffer) < self._binary_packet_size:
+            return None
+
+        packet = bytes(self._buffer[: self._binary_packet_size])
+        if packet[-1] != self._binary_footer:
+            del self._buffer[0]
+            return None
+
+        try:
+            _, trigger_state, eeg, _ = struct.unpack("<2sHf1s", packet)
+        except struct.error:
+            del self._buffer[0]
+            return None
+
+        del self._buffer[: self._binary_packet_size]
+        return np.asarray([1.0 if trigger_state else 0.0, float(eeg)], dtype=float)
+
+    def _try_parse_ascii_sample(self) -> Optional[np.ndarray]:
+        newline_index = self._buffer.find(b"\n")
+        if newline_index < 0:
+            return None
+        line = bytes(self._buffer[:newline_index])
+        del self._buffer[: newline_index + 1]
+        if not line:
+            return None
+        try:
+            text = line.decode("ascii", errors="ignore").strip()
+            parts = text.split(",")
+            if len(parts) < 2:
+                return None
+            trigger = float(parts[0])
+            eeg = float(parts[1])
+            return np.asarray([1.0 if trigger else 0.0, eeg], dtype=float)
+        except (ValueError, IndexError):
+            return None
+
     def stream_samples(self) -> Generator[np.ndarray, None, None]:
         """Yield ``[trigger, eeg_volts]`` arrays read from the serial port.
 
@@ -273,20 +321,24 @@ class SerialAcquisitionSource:
         self._open()
         try:
             while True:
-                line = self._serial.readline()
-                if not line:
-                    # readline() timed out — retry without raising
+                chunk = self._serial.read(self._serial.in_waiting or 1)
+                if not chunk:
                     continue
-                try:
-                    text = line.decode("ascii", errors="ignore").strip()
-                    parts = text.split(",")
-                    if len(parts) < 2:
+                self._buffer.extend(chunk)
+                if len(self._buffer) > 8192:
+                    del self._buffer[:-1024]
+
+                while True:
+                    sample = self._try_parse_binary_sample()
+                    if sample is not None:
+                        yield sample
                         continue
-                    trigger = float(parts[0])
-                    eeg = float(parts[1])
-                    yield np.asarray([1.0 if trigger else 0.0, eeg], dtype=float)
-                except (ValueError, IndexError):
-                    # Malformed line — skip silently
-                    continue
+
+                    if self._binary_header not in self._buffer:
+                        sample = self._try_parse_ascii_sample()
+                        if sample is not None:
+                            yield sample
+                            continue
+                    break
         finally:
             self.close()
