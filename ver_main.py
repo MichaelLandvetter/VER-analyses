@@ -197,7 +197,8 @@ class AcquisitionWorker(QObject):
                     last_emit = now
             if batch:
                 self.sample_ready.emit(np.vstack(batch))
-            self.eof_reached.emit()
+            if self._running:
+                self.eof_reached.emit()
         except Exception as exc:  # pragma: no cover
             self.error.emit(str(exc))
         finally:
@@ -682,6 +683,21 @@ class VERMainWindow(QMainWindow):
         )
 
     def closeEvent(self, event):
+        if self.scope.session_averages:
+            resp = QMessageBox.question(
+                self,
+                "Save before exit?",
+                "You have session data. Save a report before exiting?",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Yes,
+            )
+            if resp == QMessageBox.StandardButton.Cancel:
+                event.ignore()
+                return
+            if resp == QMessageBox.StandardButton.Yes:
+                self.save_report()
         self._shutdown_worker()
         super().closeEvent(event)
 
