@@ -53,6 +53,13 @@ class VERMainSourceTests(unittest.TestCase):
         self.assertIn("def _get_speed_factor(self)", self.source)
         self.assertIn("speed_factor", self.source)
 
+    def test_serial_port_combo_supports_manual_port_entry(self):
+        self.assertIn("self.serial_port_combo.setEditable(True)", self.source)
+        self.assertIn("self.serial_port_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)", self.source)
+        self.assertIn('self.serial_port_combo.setPlaceholderText("Select or type port")', self.source)
+        self.assertIn("self.serial_port_combo.setEditText(current)", self.source)
+        self.assertIn('configured_port = str(SERIAL_CONFIG.get("port", "")).strip()', self.source)
+
     def test_wavelet_stats_are_computed_and_sent_to_display(self):
         self.assertIn("peak_idx = np.unravel_index(np.argmax(power), power.shape)", self.source)
         self.assertIn("self.display.update_wavelet_stats(peak_freq, peak_latency_ms, peak_power, session_num, ver_peaks=ver_peaks)", self.source)

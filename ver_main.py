@@ -293,6 +293,9 @@ class VERMainWindow(QMainWindow):
         self.serial_port_combo = QComboBox()
         self.serial_port_combo.setMinimumWidth(130)
         self.serial_port_combo.setToolTip("USB serial port (e.g. COM3 or /dev/ttyUSB0)")
+        self.serial_port_combo.setEditable(True)
+        self.serial_port_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.serial_port_combo.setPlaceholderText("Select or type port")
         self.serial_port_combo.setEnabled(False)
         self.serial_refresh_btn = QPushButton("⟳")
         self.serial_refresh_btn.setFixedWidth(28)
@@ -426,15 +429,20 @@ class VERMainWindow(QMainWindow):
         """Populate the serial port combo with currently available ports."""
         try:
             from serial.tools.list_ports import comports
-            ports = [p.device for p in sorted(comports())]
+            ports = sorted((p.device for p in comports() if getattr(p, "device", None)), key=str.casefold)
         except Exception:
             ports = []
-        current = self.serial_port_combo.currentText()
+        current = self.serial_port_combo.currentText().strip()
+        configured_port = str(SERIAL_CONFIG.get("port", "")).strip()
+        if configured_port and configured_port not in ports:
+            ports.append(configured_port)
         self.serial_port_combo.blockSignals(True)
         self.serial_port_combo.clear()
         self.serial_port_combo.addItems(ports)
         if current in ports:
             self.serial_port_combo.setCurrentText(current)
+        elif current:
+            self.serial_port_combo.setEditText(current)
         self.serial_port_combo.blockSignals(False)
 
     def _build_acquisition_source(self, speed_factor: float | None):
