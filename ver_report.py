@@ -56,6 +56,8 @@ def save_ver_report(
     session_ver_peaks: Optional[List[dict]] = None,
     session_flash_counts: Optional[List[Optional[int]]] = None,
     session_flash_counts_accepted: Optional[List[Optional[int]]] = None,
+    session_artifact_rejection_enabled: Optional[List[Optional[bool]]] = None,
+    session_artifact_exclusion_thresholds: Optional[List[Optional[float]]] = None,
     human_overrides: Optional[List[bool]] = None,
     force_stem: Optional[str] = None
 ) -> Optional[dict]:
@@ -137,7 +139,18 @@ def save_ver_report(
     plt.close(fig2)
 
     # 7. Save CSVs
-    _write_summary_csv(summary_path, session_wavelets, session_wavelet_freqs, epoch_time_ms, session_ver_peaks, session_flash_counts, human_overrides, session_flash_counts_accepted)
+    _write_summary_csv(
+        summary_path,
+        session_wavelets,
+        session_wavelet_freqs,
+        epoch_time_ms,
+        session_ver_peaks,
+        session_flash_counts,
+        human_overrides,
+        session_flash_counts_accepted,
+        session_artifact_rejection_enabled=session_artifact_rejection_enabled,
+        session_artifact_exclusion_thresholds=session_artifact_exclusion_thresholds,
+    )
     print(f"Saved summary CSV: {summary_path}")
 
     _write_waveforms_csv(waveforms_path, averages, epoch_time_ms)
@@ -160,6 +173,8 @@ def _write_summary_csv(
     session_flash_counts: Optional[List[Optional[int]]],
     human_overrides: Optional[List[bool]] = None,
     session_flash_counts_accepted: Optional[List[Optional[int]]] = None,
+    session_artifact_rejection_enabled: Optional[List[Optional[bool]]] = None,
+    session_artifact_exclusion_thresholds: Optional[List[Optional[float]]] = None,
 ) -> None:
     """Write per-block summary statistics to a CSV file with perfectly aligned columns."""
 
@@ -188,6 +203,7 @@ def _write_summary_csv(
             "Peak1_latency_ms", "Peak1_amplitude", "Peak1_SNR",
             "Peak2_latency_ms", "Peak2_amplitude", "Peak2_SNR",
             "Peak3_latency_ms", "Peak3_amplitude", "Peak3_SNR",
+            "Exclusion_Enabled", "Exclusion_Threshold",
         ])
         
         for idx, wavelet in enumerate(session_wavelets):
@@ -209,6 +225,18 @@ def _write_summary_csv(
                         if fa is not None:
                             n_flashes_accepted = fa
                             n_flashes_rejected = fc - fa
+
+            exclusion_enabled = EPOCH_CONFIG.get("artifact_rejection_enabled", True)
+            if session_artifact_rejection_enabled and idx < len(session_artifact_rejection_enabled):
+                artifact_enabled = session_artifact_rejection_enabled[idx]
+                if artifact_enabled is not None:
+                    exclusion_enabled = artifact_enabled
+
+            exclusion_threshold = EPOCH_CONFIG.get("artifact_exclusion_uv", 0.01)
+            if session_artifact_exclusion_thresholds and idx < len(session_artifact_exclusion_thresholds):
+                artifact_threshold = session_artifact_exclusion_thresholds[idx]
+                if artifact_threshold is not None:
+                    exclusion_threshold = artifact_threshold
 
             # Extract structural data from time-domain peaks dictionary
             ver_peaks = session_ver_peaks[idx] if session_ver_peaks and idx < len(session_ver_peaks) else None
@@ -278,6 +306,7 @@ def _write_summary_csv(
                 p1_lat, p1_amp, p1_snr,
                 p2_lat, p2_amp, p2_snr,
                 p3_lat, p3_amp, p3_snr,
+                exclusion_enabled, exclusion_threshold,
             ])
 
 def _write_waveforms_csv(

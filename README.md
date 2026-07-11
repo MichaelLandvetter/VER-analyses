@@ -110,4 +110,4 @@ Each flash-locked epoch is tested against a symmetric amplitude threshold before
 - Settings are persisted to `user_settings.json` and take effect immediately for the active session.
 - Session completion is still based on total flashes detected (not accepted epochs), matching LabChart behaviour.
 - The progress bar shows `Flash total/N | Accepted A | Rejected R` during acquisition.
-- The summary CSV (`_summary.csv`) includes columns `N_flashes_total`, `N_flashes_accepted`, and `N_flashes_rejected` per block.
+- The summary CSV (`_summary.csv`) includes columns `N_flashes_total`, `N_flashes_accepted`, `N_flashes_rejected`, `Exclusion_Enabled`, and `Exclusion_Threshold` per block.
