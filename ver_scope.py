@@ -41,7 +41,13 @@ class VERScopeProcessor:
     def _active_session_number(self) -> int:
         return min(self.config["num_sessions"], self.session_index + 1)
 
+    def _artifact_settings(self) -> tuple[bool, float]:
+        artifact_enabled = bool(self.config.get("artifact_rejection_enabled", True))
+        threshold = float(self.config.get("artifact_exclusion_uv", 0.01))
+        return artifact_enabled, threshold
+
     def _finalize_current_session(self) -> dict:
+        artifact_enabled, threshold = self._artifact_settings()
         # Edge case: all epochs were rejected — produce a zero waveform.
         if self.running_average is not None:
             session_average = self.running_average.copy()
@@ -59,6 +65,8 @@ class VERScopeProcessor:
             "session_average": session_average,
             "session_number": completed_session_number,
             "flash_count_accepted": completed_flash_count_accepted,
+            "artifact_rejection_enabled": artifact_enabled,
+            "artifact_exclusion_threshold": threshold,
         }
 
     def save_partial_session(self, min_flashes: Optional[int] = None) -> Optional[dict]:
@@ -74,6 +82,7 @@ class VERScopeProcessor:
         return partial_session
 
     def process_sample(self, trigger_value: float, eeg_sample: float) -> dict:
+        artifact_enabled, threshold = self._artifact_settings()
         result = {
             "trigger_detected": False,
             "epoch_complete": False,
@@ -89,6 +98,8 @@ class VERScopeProcessor:
             "completed_session_number": None,
             "completed_session_flash_count": None,
             "completed_session_flash_count_accepted": None,
+            "artifact_rejection_enabled": artifact_enabled,
+            "artifact_exclusion_threshold": threshold,
         }
 
         for pending in list(self.pending_epochs):
@@ -100,8 +111,6 @@ class VERScopeProcessor:
                 filtered_epoch = self.bandpass_filter.apply_zero_phase(epoch, baseline_mean=baseline)
 
                 # --- Artifact rejection ---
-                artifact_enabled = bool(self.config.get("artifact_rejection_enabled", True))
-                threshold = float(self.config.get("artifact_exclusion_uv", 0.01))
                 epoch_rejected = artifact_enabled and np.any(np.abs(filtered_epoch) > threshold)
                 self.flash_count += 1  # always count total triggers
 
@@ -135,6 +144,8 @@ class VERScopeProcessor:
                             "completed_session_number": completed_session["session_number"],
                             "completed_session_flash_count": session_total,
                             "completed_session_flash_count_accepted": session_accepted,
+                            "artifact_rejection_enabled": completed_session["artifact_rejection_enabled"],
+                            "artifact_exclusion_threshold": completed_session["artifact_exclusion_threshold"],
                         }
                     )
 

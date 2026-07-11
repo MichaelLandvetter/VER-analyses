@@ -300,12 +300,15 @@ class VERMainWindow(QMainWindow):
         self.session_ver_peaks = []
         self.session_flash_counts = []
         self.session_flash_counts_accepted = []
+        self.session_artifact_rejection_enabled = []
+        self.session_artifact_exclusion_thresholds = []
         self._scope_panel_session = None
 
         self.bandpass = BandpassFilter()
         self.scope = VERScopeProcessor(self.bandpass)
 
         self._build_ui()
+        self._sync_artifact_settings_from_ui()
         self._build_menu()
 
     def _launch_usb_test(self):
@@ -538,6 +541,7 @@ class VERMainWindow(QMainWindow):
         self.set_artifact_enabled.setChecked(
             bool(self.settings_manager.settings["EPOCH_CONFIG"].get("artifact_rejection_enabled", True))
         )
+        self.set_artifact_enabled.toggled.connect(self._sync_artifact_settings_from_ui)
 
         self.set_artifact_threshold = QDoubleSpinBox()
         self.set_artifact_threshold.setRange(0.0001, 10.0)
@@ -546,6 +550,7 @@ class VERMainWindow(QMainWindow):
         self.set_artifact_threshold.setValue(
             float(self.settings_manager.settings["EPOCH_CONFIG"].get("artifact_exclusion_uv", 0.01))
         )
+        self.set_artifact_threshold.valueChanged.connect(self._sync_artifact_settings_from_ui)
 
         # -- Wavelet Settings --
         self.set_wav_bw = QDoubleSpinBox()
@@ -813,6 +818,7 @@ class VERMainWindow(QMainWindow):
         
     def start_acquisition(self):
         current_speed = self._get_speed_factor()
+        self._sync_artifact_settings_from_ui()
 
         # ---> NEW LINES: Tell the scope's filter which mode to use! <---
         if hasattr(self, 'scope') and hasattr(self.scope, 'bandpass_filter'):
@@ -872,13 +878,32 @@ class VERMainWindow(QMainWindow):
         self.session_ver_peaks = []
         self.session_flash_counts = []
         self.session_flash_counts_accepted = []
+        self.session_artifact_rejection_enabled = []
+        self.session_artifact_exclusion_thresholds = []
         self._scope_panel_session = None
+        self._sync_artifact_settings_from_ui()
         self.display.reset_all()
         self._set_progress(0, 0) 
         self.start_btn.setText("Start")
         self._shutdown_worker()
         self.worker = None
-        
+
+    def _sync_artifact_settings_from_ui(self, *_args):
+        if not hasattr(self, "set_artifact_enabled") or not hasattr(self, "set_artifact_threshold"):
+            return
+
+        artifact_enabled = self.set_artifact_enabled.isChecked()
+        artifact_threshold = float(self.set_artifact_threshold.value())
+
+        self.settings_manager.settings["EPOCH_CONFIG"]["artifact_rejection_enabled"] = artifact_enabled
+        self.settings_manager.settings["EPOCH_CONFIG"]["artifact_exclusion_uv"] = artifact_threshold
+        EPOCH_CONFIG["artifact_rejection_enabled"] = artifact_enabled
+        EPOCH_CONFIG["artifact_exclusion_uv"] = artifact_threshold
+
+        if hasattr(self, "scope") and self.scope is not None:
+            self.scope.config["artifact_rejection_enabled"] = artifact_enabled
+            self.scope.config["artifact_exclusion_uv"] = artifact_threshold
+
     def _save_user_settings(self):
         """Grabs the values from the UI, saves them to JSON, and updates live memory."""
         
@@ -897,12 +922,7 @@ class VERMainWindow(QMainWindow):
         new_settings["WAVELET_CONFIG"]["bandwidth"] = float(self.set_wav_bw.value())
         new_settings["WAVELET_CONFIG"]["center_freq"] = float(self.set_wav_cf.value())
 
-        # Apply artifact rejection to in-memory EPOCH_CONFIG immediately
-        EPOCH_CONFIG["artifact_rejection_enabled"] = new_settings["EPOCH_CONFIG"]["artifact_rejection_enabled"]
-        EPOCH_CONFIG["artifact_exclusion_uv"] = new_settings["EPOCH_CONFIG"]["artifact_exclusion_uv"]
-        if hasattr(self, "scope") and self.scope is not None:
-            self.scope.config["artifact_rejection_enabled"] = new_settings["EPOCH_CONFIG"]["artifact_rejection_enabled"]
-            self.scope.config["artifact_exclusion_uv"] = new_settings["EPOCH_CONFIG"]["artifact_exclusion_uv"]
+        self._sync_artifact_settings_from_ui()
 
         # Save to JSON and apply to live config!
         self.settings_manager.save_settings(new_settings)
@@ -958,6 +978,8 @@ class VERMainWindow(QMainWindow):
                 session_num,
                 flash_count=scope_result.get("completed_session_flash_count"),
                 flash_count_accepted=scope_result.get("completed_session_flash_count_accepted"),
+                artifact_rejection_enabled=scope_result.get("artifact_rejection_enabled"),
+                artifact_exclusion_threshold=scope_result.get("artifact_exclusion_threshold"),
             )
             self.display.clear_scope_panel()
             self._scope_panel_session = None
@@ -992,6 +1014,8 @@ class VERMainWindow(QMainWindow):
                     partial_session["session_number"],
                     flash_count=partial_session["flash_count"],
                     flash_count_accepted=partial_session.get("flash_count_accepted"),
+                    artifact_rejection_enabled=partial_session.get("artifact_rejection_enabled"),
+                    artifact_exclusion_threshold=partial_session.get("artifact_exclusion_threshold"),
                 )
                 
             if self.scope.session_averages:
@@ -1038,7 +1062,15 @@ class VERMainWindow(QMainWindow):
     def _handle_worker_error(self, message: str):
         QMessageBox.critical(self, "Acquisition error", message)
 
-    def _record_session(self, session_avg: np.ndarray, session_num: int, flash_count: int | None = None, flash_count_accepted: int | None = None):
+    def _record_session(
+        self,
+        session_avg: np.ndarray,
+        session_num: int,
+        flash_count: int | None = None,
+        flash_count_accepted: int | None = None,
+        artifact_rejection_enabled: bool | None = None,
+        artifact_exclusion_threshold: float | None = None,
+    ):
         power, freqs = compute_wavelet_scalogram(session_avg)
         self.session_wavelets.append(power)
         self.session_wavelet_freqs = freqs
@@ -1051,6 +1083,8 @@ class VERMainWindow(QMainWindow):
         self.session_ver_peaks.append(ver_peaks)
         self.session_flash_counts.append(flash_count)
         self.session_flash_counts_accepted.append(flash_count_accepted)
+        self.session_artifact_rejection_enabled.append(artifact_rejection_enabled)
+        self.session_artifact_exclusion_thresholds.append(artifact_exclusion_threshold)
 
         seconds = int(session_num * (EPOCH_CONFIG["flashes_per_session"] / 2.0))
         label = f"{seconds} s"
@@ -1147,6 +1181,8 @@ class VERMainWindow(QMainWindow):
                 session_ver_peaks=self.session_ver_peaks if self.session_ver_peaks else None,
                 session_flash_counts=self.session_flash_counts if self.session_flash_counts else None,
                 session_flash_counts_accepted=self.session_flash_counts_accepted if self.session_flash_counts_accepted else None,
+                session_artifact_rejection_enabled=self.session_artifact_rejection_enabled if self.session_artifact_rejection_enabled else None,
+                session_artifact_exclusion_thresholds=self.session_artifact_exclusion_thresholds if self.session_artifact_exclusion_thresholds else None,
             )
         except PermissionError:
             load_ui.accept() # Close loading box on error
@@ -1203,6 +1239,8 @@ class VERMainWindow(QMainWindow):
                         session_ver_peaks=self.session_ver_peaks if self.session_ver_peaks else None,
                         session_flash_counts=self.session_flash_counts if self.session_flash_counts else None,
                         session_flash_counts_accepted=self.session_flash_counts_accepted if self.session_flash_counts_accepted else None,
+                        session_artifact_rejection_enabled=self.session_artifact_rejection_enabled if self.session_artifact_rejection_enabled else None,
+                        session_artifact_exclusion_thresholds=self.session_artifact_exclusion_thresholds if self.session_artifact_exclusion_thresholds else None,
                         human_overrides=overrides,
                         force_stem=original_stem 
                     )
