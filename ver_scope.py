@@ -102,8 +102,7 @@ class VERScopeProcessor:
                 # --- Artifact rejection ---
                 artifact_enabled = bool(self.config.get("artifact_rejection_enabled", True))
                 threshold = float(self.config.get("artifact_exclusion_uv", 0.01))
-                epoch_rejected = artifact_enabled and bool(np.any(np.abs(filtered_epoch) > threshold))
-
+                epoch_rejected = artifact_enabled and np.any(np.abs(filtered_epoch) > threshold)
                 self.flash_count += 1  # always count total triggers
 
                 if not epoch_rejected:

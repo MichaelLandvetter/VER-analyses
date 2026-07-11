@@ -154,7 +154,7 @@ class VERDisplayWidget(QWidget):
             else:
                 self.flash_scatter.setData(x=[], y=[])
 
-    def update_scope_panel(self, epoch_time_ms: np.ndarray, latest_epoch: np.ndarray, running_average, flash_count: int, session_number: int, flash_count_accepted: int | None = None) -> None:
+    def update_scope_panel(self, epoch_time_ms: np.ndarray, latest_epoch: np.ndarray, running_average: Optional[np.ndarray], flash_count: int, session_number: int, flash_count_accepted: Optional[int] = None) -> None:
         curve = self.plot_scope.plot(epoch_time_ms, latest_epoch, pen=pg.mkPen((180, 180, 180, 120), width=1))
         self.scope_overlay_curves.append(curve)
         if len(self.scope_overlay_curves) > DISPLAY_CONFIG["max_epoch_overlays"]:
