@@ -574,7 +574,7 @@ class VERMainWindow(QMainWindow):
         settings_layout.addRow("Wavelet Center Freq (Freq Focus):", self.set_wav_cf)
 
         # -- Save Button --
-        self.save_settings_btn = QPushButton("Save & Apply Settings")
+        self.save_settings_btn = QPushButton("Save and Apply Settings")
         self.save_settings_btn.clicked.connect(self._save_user_settings)
         settings_layout.addRow(self.save_settings_btn)
 
