@@ -1,0 +1,7 @@
+numpy
+scipy
+PyWavelets
+matplotlib
+pyqtgraph
+PyQt6
+pyserial

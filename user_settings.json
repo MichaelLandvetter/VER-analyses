@@ -1,0 +1,21 @@
+{
+    "EPOCH_CONFIG": {
+        "pre_stim_ms": 100,
+        "post_stim_ms": 400,
+        "flashes_per_session": 120,
+        "num_sessions": 10
+    },
+    "WAVELET_CONFIG": {
+        "bandwidth": 1,
+        "center_freq": 1,
+        "num_freqs": 320,
+        "freq_min": 1.0,
+        "freq_max": 100.0
+    },
+    "FILTER_CONFIG": {
+        "lowcut_hz": 12.0,
+        "highcut_hz": 32.0,
+        "order": 4,
+        "sample_rate": 250
+    }
+}
