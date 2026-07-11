@@ -39,6 +39,8 @@ EPOCH_CONFIG = {
     "post_stim_ms": 400,
     "flashes_per_session": 120,  # flashes collected per minute
     "num_sessions": 10,          # kept as key name for compatibility; displayed as minutes
+    "artifact_rejection_enabled": True,   # discard epochs that exceed the threshold
+    "artifact_exclusion_uv": 0.01,        # symmetric ±threshold; reject if any sample exceeds this
 }
 
 # --- Peak detection ---

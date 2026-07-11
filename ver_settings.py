@@ -42,7 +42,9 @@ class SettingsManager:
                 "pre_stim_ms": 100.0,
                 "post_stim_ms": 400.0,
                 "flashes_per_session": 120,
-                "num_sessions": 10
+                "num_sessions": 10,
+                "artifact_rejection_enabled": True,
+                "artifact_exclusion_uv": 0.01
             },
             "PEAK_CONFIG": {
                 "SNR_THRESHOLD": 2.0,
