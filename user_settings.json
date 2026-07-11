@@ -3,7 +3,9 @@
         "pre_stim_ms": 100,
         "post_stim_ms": 400,
         "flashes_per_session": 120,
-        "num_sessions": 10
+        "num_sessions": 10,
+        "artifact_rejection_enabled": true,
+        "artifact_exclusion_uv": 0.01
     },
     "WAVELET_CONFIG": {
         "bandwidth": 1,
@@ -17,5 +19,56 @@
         "highcut_hz": 32.0,
         "order": 4,
         "sample_rate": 250
+    },
+    "ACQ_CONFIG": {
+        "sample_rate": 250,
+        "simulate_realtime": true,
+        "source_mode": "File"
+    },
+    "FILE_FORMATS": {
+        "SD-card": {
+            "delimiter": "\t",
+            "trigger_column": 0,
+            "eeg_column": 2,
+            "skip_header": 0,
+            "trigger_mode": "threshold",
+            "trigger_threshold": 0.5
+        },
+        "LabChart": {
+            "delimiter": "\t",
+            "trigger_column": 0,
+            "eeg_column": 1,
+            "skip_header": 0,
+            "trigger_mode": "interval",
+            "trigger_threshold": 0.1
+        }
+    },
+    "PEAK_CONFIG": {
+        "SNR_THRESHOLD": 2.0,
+        "BASELINE_START_MS": -100,
+        "BASELINE_END_MS": 0
+    },
+    "CLASSIFIER_CONFIG": {
+        "min_scale": 8.0,
+        "max_scale": 32.0,
+        "min_power": 1e-07,
+        "p2_min_latency": 40.0,
+        "p2_max_latency": 120.0,
+        "ipi_min": 20.0,
+        "ipi_max": 85.0,
+        "p3_p2_max": 120.0,
+        "snr_threshold": 2.0
+    },
+    "SERIAL_CONFIG": {
+        "port": "COM4",
+        "baud_rate": 921600,
+        "timeout": 2.0,
+        "trigger_high_threshold": 0.7,
+        "trigger_low_threshold": 0.3
+    },
+    "DISPLAY_CONFIG": {
+        "scroll_seconds": 10,
+        "max_epoch_overlays": 120,
+        "scroll_max_fps": 30
     }
 }

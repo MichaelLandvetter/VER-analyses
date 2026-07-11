@@ -154,17 +154,26 @@ class VERDisplayWidget(QWidget):
             else:
                 self.flash_scatter.setData(x=[], y=[])
 
-    def update_scope_panel(self, epoch_time_ms: np.ndarray, latest_epoch: np.ndarray, running_average: np.ndarray, flash_count: int, session_number: int) -> None:
+    def update_scope_panel(self, epoch_time_ms: np.ndarray, latest_epoch: np.ndarray, running_average, flash_count: int, session_number: int, flash_count_accepted: int | None = None) -> None:
         curve = self.plot_scope.plot(epoch_time_ms, latest_epoch, pen=pg.mkPen((180, 180, 180, 120), width=1))
         self.scope_overlay_curves.append(curve)
         if len(self.scope_overlay_curves) > DISPLAY_CONFIG["max_epoch_overlays"]:
             old = self.scope_overlay_curves.pop(0)
             self.plot_scope.removeItem(old)
 
-        self.scope_avg_curve.setData(epoch_time_ms, running_average)
-        self.plot_scope.setTitle(
-            f"Scope View - Flash {flash_count}/{EPOCH_CONFIG['flashes_per_session']} | {session_number}/{EPOCH_CONFIG['num_sessions']}"
-        )
+        if running_average is not None:
+            self.scope_avg_curve.setData(epoch_time_ms, running_average)
+
+        if flash_count_accepted is not None:
+            rejected = flash_count - flash_count_accepted
+            title = (
+                f"Scope View - Flash {flash_count}/{EPOCH_CONFIG['flashes_per_session']} "
+                f"| Acc {flash_count_accepted} Rej {rejected} "
+                f"| {session_number}/{EPOCH_CONFIG['num_sessions']}"
+            )
+        else:
+            title = f"Scope View - Flash {flash_count}/{EPOCH_CONFIG['flashes_per_session']} | {session_number}/{EPOCH_CONFIG['num_sessions']}"
+        self.plot_scope.setTitle(title)
 
     def clear_scope_panel(self):
         for curve in self.scope_overlay_curves:

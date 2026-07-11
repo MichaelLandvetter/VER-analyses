@@ -17,6 +17,7 @@ from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QTextOption
 from PyQt6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDoubleSpinBox,
@@ -298,6 +299,7 @@ class VERMainWindow(QMainWindow):
         self.session_labels = []
         self.session_ver_peaks = []
         self.session_flash_counts = []
+        self.session_flash_counts_accepted = []
         self._scope_panel_session = None
 
         self.bandpass = BandpassFilter()
@@ -531,6 +533,20 @@ class VERMainWindow(QMainWindow):
         self.set_post_stim.setRange(100, 2000)
         self.set_post_stim.setValue(int(self.settings_manager.settings["EPOCH_CONFIG"]["post_stim_ms"]))
 
+        # -- Artifact Rejection Settings --
+        self.set_artifact_enabled = QCheckBox()
+        self.set_artifact_enabled.setChecked(
+            bool(self.settings_manager.settings["EPOCH_CONFIG"].get("artifact_rejection_enabled", True))
+        )
+
+        self.set_artifact_threshold = QDoubleSpinBox()
+        self.set_artifact_threshold.setRange(0.0001, 10.0)
+        self.set_artifact_threshold.setSingleStep(0.001)
+        self.set_artifact_threshold.setDecimals(4)
+        self.set_artifact_threshold.setValue(
+            float(self.settings_manager.settings["EPOCH_CONFIG"].get("artifact_exclusion_uv", 0.01))
+        )
+
         # -- Wavelet Settings --
         self.set_wav_bw = QDoubleSpinBox()
         self.set_wav_bw.setRange(0.1, 5.0)
@@ -546,6 +562,8 @@ class VERMainWindow(QMainWindow):
         settings_layout.addRow(QLabel("<b>Epoch Window</b>"))
         settings_layout.addRow("Pre-Stimulus Time (ms):", self.set_pre_stim)
         settings_layout.addRow("Post-Stimulus Time (ms):", self.set_post_stim)
+        settings_layout.addRow("Enable artifact rejection:", self.set_artifact_enabled)
+        settings_layout.addRow("Exclusion threshold (±):", self.set_artifact_threshold)
         settings_layout.addRow(QLabel("<b>Wavelet Tuning</b>"))
         settings_layout.addRow("Wavelet Bandwidth (Time Resolution):", self.set_wav_bw)
         settings_layout.addRow("Wavelet Center Freq (Freq Focus):", self.set_wav_cf)
@@ -853,6 +871,7 @@ class VERMainWindow(QMainWindow):
         self.session_labels = []
         self.session_ver_peaks = []
         self.session_flash_counts = []
+        self.session_flash_counts_accepted = []
         self._scope_panel_session = None
         self.display.reset_all()
         self._set_progress(0, 0) 
@@ -870,9 +889,20 @@ class VERMainWindow(QMainWindow):
         new_settings["EPOCH_CONFIG"]["pre_stim_ms"] = float(self.set_pre_stim.value())
         new_settings["EPOCH_CONFIG"]["post_stim_ms"] = float(self.set_post_stim.value())
         
+        # Update artifact rejection settings
+        new_settings["EPOCH_CONFIG"]["artifact_rejection_enabled"] = self.set_artifact_enabled.isChecked()
+        new_settings["EPOCH_CONFIG"]["artifact_exclusion_uv"] = float(self.set_artifact_threshold.value())
+        
         # Update Wavelet numbers
         new_settings["WAVELET_CONFIG"]["bandwidth"] = float(self.set_wav_bw.value())
         new_settings["WAVELET_CONFIG"]["center_freq"] = float(self.set_wav_cf.value())
+
+        # Apply artifact rejection to in-memory EPOCH_CONFIG immediately
+        EPOCH_CONFIG["artifact_rejection_enabled"] = new_settings["EPOCH_CONFIG"]["artifact_rejection_enabled"]
+        EPOCH_CONFIG["artifact_exclusion_uv"] = new_settings["EPOCH_CONFIG"]["artifact_exclusion_uv"]
+        if hasattr(self, "scope") and self.scope is not None:
+            self.scope.config["artifact_rejection_enabled"] = new_settings["EPOCH_CONFIG"]["artifact_rejection_enabled"]
+            self.scope.config["artifact_exclusion_uv"] = new_settings["EPOCH_CONFIG"]["artifact_exclusion_uv"]
 
         # Save to JSON and apply to live config!
         self.settings_manager.save_settings(new_settings)
@@ -905,7 +935,7 @@ class VERMainWindow(QMainWindow):
         self.display.update_scroll_panel(eeg, filtered, scope_result["trigger_detected"])
 
         current_session = scope_result["session_number"] 
-        self._set_progress(current_session, scope_result["flash_count"]) 
+        self._set_progress(current_session, scope_result["flash_count"], scope_result.get("flash_count_accepted")) 
 
         if scope_result["epoch_complete"]:
             if self._scope_panel_session != current_session:
@@ -917,12 +947,18 @@ class VERMainWindow(QMainWindow):
                 scope_result["running_average"],
                 scope_result["flash_count"],
                 current_session,
+                flash_count_accepted=scope_result.get("flash_count_accepted"),
             )
 
         if scope_result["session_complete"]:
             session_avg = scope_result["completed_session_average"]
             session_num = scope_result["completed_session_number"]
-            self._record_session(session_avg, session_num)
+            self._record_session(
+                session_avg,
+                session_num,
+                flash_count=scope_result.get("completed_session_flash_count"),
+                flash_count_accepted=scope_result.get("completed_session_flash_count_accepted"),
+            )
             self.display.clear_scope_panel()
             self._scope_panel_session = None
 
@@ -933,12 +969,17 @@ class VERMainWindow(QMainWindow):
                 self.stop_acquisition()
                 self.save_report()
 
-    def _set_progress(self, session_number: int, flash_count: int): 
+    def _set_progress(self, session_number: int, flash_count: int, flash_count_accepted: int | None = None): 
         # Calculate how many seconds one block takes (flashes / 2 Hz)
         seconds_per_block = int(EPOCH_CONFIG['flashes_per_session'] / 2.0)
-        
+        flash_total = EPOCH_CONFIG['flashes_per_session']
+        if flash_count_accepted is not None:
+            rejected = flash_count - flash_count_accepted
+            flash_text = f"Flash {flash_count}/{flash_total} | Accepted {flash_count_accepted} | Rejected {rejected}"
+        else:
+            flash_text = f"Flash {flash_count}/{flash_total}"
         self.progress_label.setText(
-            f"Block {session_number}/{EPOCH_CONFIG['num_sessions']} ({seconds_per_block}s) | Flash {flash_count}/{EPOCH_CONFIG['flashes_per_session']}"
+            f"Block {session_number}/{EPOCH_CONFIG['num_sessions']} ({seconds_per_block}s) | {flash_text}"
         )
     def _handle_eof(self):
             self.max_speed_warning.hide() # Force hide here
@@ -950,6 +991,7 @@ class VERMainWindow(QMainWindow):
                     partial_session["session_average"],
                     partial_session["session_number"],
                     flash_count=partial_session["flash_count"],
+                    flash_count_accepted=partial_session.get("flash_count_accepted"),
                 )
                 
             if self.scope.session_averages:
@@ -996,7 +1038,7 @@ class VERMainWindow(QMainWindow):
     def _handle_worker_error(self, message: str):
         QMessageBox.critical(self, "Acquisition error", message)
 
-    def _record_session(self, session_avg: np.ndarray, session_num: int, flash_count: int | None = None):
+    def _record_session(self, session_avg: np.ndarray, session_num: int, flash_count: int | None = None, flash_count_accepted: int | None = None):
         power, freqs = compute_wavelet_scalogram(session_avg)
         self.session_wavelets.append(power)
         self.session_wavelet_freqs = freqs
@@ -1008,11 +1050,14 @@ class VERMainWindow(QMainWindow):
         ver_peaks = detect_ver_peaks(session_avg, self.scope.epoch_time_ms)
         self.session_ver_peaks.append(ver_peaks)
         self.session_flash_counts.append(flash_count)
+        self.session_flash_counts_accepted.append(flash_count_accepted)
 
         seconds = int(session_num * (EPOCH_CONFIG["flashes_per_session"] / 2.0))
         label = f"{seconds} s"
         
-        if flash_count is not None and flash_count != EPOCH_CONFIG["flashes_per_session"]:
+        if flash_count_accepted is not None and flash_count is not None:
+            label = f"{label} (Acc {flash_count_accepted}/{flash_count})"
+        elif flash_count is not None and flash_count != EPOCH_CONFIG["flashes_per_session"]:
             label = f"{label} ({flash_count}/{EPOCH_CONFIG['flashes_per_session']})"
         self.session_labels.append(label)
 
@@ -1101,6 +1146,7 @@ class VERMainWindow(QMainWindow):
                 session_labels=self.session_labels if self.session_labels else None,
                 session_ver_peaks=self.session_ver_peaks if self.session_ver_peaks else None,
                 session_flash_counts=self.session_flash_counts if self.session_flash_counts else None,
+                session_flash_counts_accepted=self.session_flash_counts_accepted if self.session_flash_counts_accepted else None,
             )
         except PermissionError:
             load_ui.accept() # Close loading box on error
@@ -1156,6 +1202,7 @@ class VERMainWindow(QMainWindow):
                         session_labels=self.session_labels if self.session_labels else None,
                         session_ver_peaks=self.session_ver_peaks if self.session_ver_peaks else None,
                         session_flash_counts=self.session_flash_counts if self.session_flash_counts else None,
+                        session_flash_counts_accepted=self.session_flash_counts_accepted if self.session_flash_counts_accepted else None,
                         human_overrides=overrides,
                         force_stem=original_stem 
                     )

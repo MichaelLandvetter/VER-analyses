@@ -55,6 +55,7 @@ def save_ver_report(
     session_labels: Optional[List[str]] = None,
     session_ver_peaks: Optional[List[dict]] = None,
     session_flash_counts: Optional[List[Optional[int]]] = None,
+    session_flash_counts_accepted: Optional[List[Optional[int]]] = None,
     human_overrides: Optional[List[bool]] = None,
     force_stem: Optional[str] = None
 ) -> Optional[dict]:
@@ -136,7 +137,7 @@ def save_ver_report(
     plt.close(fig2)
 
     # 7. Save CSVs
-    _write_summary_csv(summary_path, session_wavelets, session_wavelet_freqs, epoch_time_ms, session_ver_peaks, session_flash_counts, human_overrides)
+    _write_summary_csv(summary_path, session_wavelets, session_wavelet_freqs, epoch_time_ms, session_ver_peaks, session_flash_counts, human_overrides, session_flash_counts_accepted)
     print(f"Saved summary CSV: {summary_path}")
 
     _write_waveforms_csv(waveforms_path, averages, epoch_time_ms)
@@ -158,6 +159,7 @@ def _write_summary_csv(
     session_ver_peaks: Optional[List[dict]],
     session_flash_counts: Optional[List[Optional[int]]],
     human_overrides: Optional[List[bool]] = None,
+    session_flash_counts_accepted: Optional[List[Optional[int]]] = None,
 ) -> None:
     """Write per-block summary statistics to a CSV file with perfectly aligned columns."""
 
@@ -180,7 +182,8 @@ def _write_summary_csv(
         
         # FIXED HEADERS: Explicitly ordered columns to prevent cell skipping or shifting
         writer.writerow([
-            "Time_Block", "N_flashes", "Peak_power", "Peak_scale", "Wavelet_peak_latency_ms", 
+            "Time_Block", "N_flashes_total", "N_flashes_accepted", "N_flashes_rejected",
+            "Peak_power", "Peak_scale", "Wavelet_peak_latency_ms", 
             "VER_label", "Reason", "Noise_RMS",
             "Peak1_latency_ms", "Peak1_amplitude", "Peak1_SNR",
             "Peak2_latency_ms", "Peak2_amplitude", "Peak2_SNR",
@@ -194,11 +197,18 @@ def _write_summary_csv(
             peak_scale = float(session_wavelet_freqs[peak_idx[0]])
             wavelet_peak_latency_ms = float(epoch_time_ms[peak_idx[1]])
 
-            n_flashes = ""
+            n_flashes_total = ""
+            n_flashes_accepted = ""
+            n_flashes_rejected = ""
             if session_flash_counts and idx < len(session_flash_counts):
                 fc = session_flash_counts[idx]
                 if fc is not None:
-                    n_flashes = fc
+                    n_flashes_total = fc
+                    if session_flash_counts_accepted and idx < len(session_flash_counts_accepted):
+                        fa = session_flash_counts_accepted[idx]
+                        if fa is not None:
+                            n_flashes_accepted = fa
+                            n_flashes_rejected = fc - fa
 
             # Extract structural data from time-domain peaks dictionary
             ver_peaks = session_ver_peaks[idx] if session_ver_peaks and idx < len(session_ver_peaks) else None
@@ -210,6 +220,7 @@ def _write_summary_csv(
             p1_latency_val = None
             p2_latency_val = None
             p3_latency_val = None
+            p2_snr_val = 0.0
             
             if ver_peaks is not None:
                 p1_dict = ver_peaks.get('Peak-1', {})
@@ -255,7 +266,9 @@ def _write_summary_csv(
             # WRITER MAPPING: Every variable is written exactly to match its corresponding header index
             writer.writerow([
                 f"{seconds} s", 
-                n_flashes, 
+                n_flashes_total,
+                n_flashes_accepted,
+                n_flashes_rejected,
                 f"{peak_power:.3e}", 
                 f"{peak_scale:.1f}", 
                 f"{wavelet_peak_latency_ms:.1f}", 
