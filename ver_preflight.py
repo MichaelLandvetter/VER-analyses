@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -14,14 +14,53 @@ from ver_scope import VERScopeProcessor
 MAD_TO_SIGMA = 1.4826  # Converts MAD to std-dev equivalent assuming normal distribution.
 ROBUST_SIGMA_MULTIPLIER = 3.0
 MIN_THRESHOLD_UV = 1e-6
+MIN_SELECTABLE_THRESHOLD_UV = 1e-4
+
+
+def _build_threshold_stats(peak_values: np.ndarray, threshold_uv: float) -> ExclusionThresholdStats:
+    threshold = max(float(threshold_uv), MIN_SELECTABLE_THRESHOLD_UV)
+    rejected = int(np.count_nonzero(peak_values > threshold))
+    total = int(peak_values.size)
+    accepted = total - rejected
+    rejected_percent = (rejected / total * 100.0) if total else 0.0
+    return ExclusionThresholdStats(
+        threshold_uv=threshold,
+        total_epochs=total,
+        accepted_epochs=accepted,
+        rejected_epochs=rejected,
+        rejected_percent=rejected_percent,
+    )
+
+
+@dataclass(frozen=True)
+class ExclusionThresholdStats:
+    """Accepted/rejected whole-file counts for a candidate symmetric threshold."""
+
+    threshold_uv: float
+    total_epochs: int
+    accepted_epochs: int
+    rejected_epochs: int
+    rejected_percent: float
 
 
 @dataclass(frozen=True)
 class ExclusionSuggestion:
+    """Whole-file exclusion tuning data.
+
+    `peak_values_uv` stores one max-absolute filtered amplitude value per detected
+    epoch, as a 1-D NumPy array, so the UI can render the histogram and recompute
+    accepted/rejected estimates live without re-parsing the file. It is hidden
+    from `repr` to avoid dumping large arrays in logs or test failures.
+    """
+
     suggested_threshold_uv: float
     total_epochs: int
     accepted_epochs: int
     rejected_epochs: int
+    peak_values_uv: np.ndarray = field(repr=False)
+
+    def stats_for_threshold(self, threshold_uv: float) -> ExclusionThresholdStats:
+        return _build_threshold_stats(self.peak_values_uv, threshold_uv)
 
 
 def _suggest_threshold_from_peaks(peak_values: np.ndarray) -> float:
@@ -73,13 +112,12 @@ def suggest_exclusion_from_file(
 
     peak_values = np.asarray(epoch_peak_abs, dtype=float)
     suggested_threshold = _suggest_threshold_from_peaks(peak_values)
-    rejected = int(np.count_nonzero(peak_values > suggested_threshold))
-    total = int(peak_values.size)
-    accepted = total - rejected
+    suggested_stats = _build_threshold_stats(peak_values, suggested_threshold)
 
     return ExclusionSuggestion(
         suggested_threshold_uv=suggested_threshold,
-        total_epochs=total,
-        accepted_epochs=accepted,
-        rejected_epochs=rejected,
+        total_epochs=suggested_stats.total_epochs,
+        accepted_epochs=suggested_stats.accepted_epochs,
+        rejected_epochs=suggested_stats.rejected_epochs,
+        peak_values_uv=peak_values,
     )

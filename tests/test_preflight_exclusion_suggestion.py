@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from ver_preflight import suggest_exclusion_from_file
 
@@ -53,4 +54,65 @@ def test_suggest_exclusion_uses_whole_file_epochs(tmp_path):
     assert suggestion.total_epochs == 6
     assert suggestion.accepted_epochs == 4
     assert suggestion.rejected_epochs == 2
+    np.testing.assert_allclose(suggestion.peak_values_uv, np.array([0.2, 0.25, 0.3, 0.35, 1.2, 1.5]))
     assert EXPECTED_MIN_THRESHOLD < suggestion.suggested_threshold_uv < EXPECTED_MAX_THRESHOLD
+
+
+def test_threshold_stats_update_live_counts_from_same_peak_metric(tmp_path):
+    data_path = tmp_path / "preflight_input_stats.txt"
+    _write_test_file(data_path, amplitudes=[0.2, 0.25, 0.3, 0.35, 1.2, 1.5])
+
+    suggestion = suggest_exclusion_from_file(
+        str(data_path),
+        epoch_config={
+            "pre_stim_ms": 4,
+            "post_stim_ms": 8,
+            "flashes_per_session": FLASHES_PER_SESSION_LIMIT,
+            "num_sessions": 1,
+            "artifact_rejection_enabled": True,
+            "artifact_exclusion_uv": 0.01,
+        },
+        file_config={
+            "delimiter": "\t",
+            "trigger_column": 0,
+            "eeg_column": 1,
+            "skip_header": 0,
+            "trigger_mode": "threshold",
+            "trigger_threshold": 0.5,
+        },
+        bandpass_filter=DummyFilter(),
+    )
+
+    stats = suggestion.stats_for_threshold(0.35)
+
+    assert stats.total_epochs == 6
+    assert stats.accepted_epochs == 4
+    assert stats.rejected_epochs == 2
+    assert np.isclose(stats.rejected_percent, (2 / 6) * 100.0)
+
+
+def test_suggest_exclusion_raises_when_no_complete_epochs_detected(tmp_path):
+    data_path = tmp_path / "preflight_no_epochs.txt"
+    np.savetxt(data_path, np.zeros((10, 2), dtype=float), delimiter="\t", fmt="%.6f")
+
+    with pytest.raises(ValueError, match="No complete epochs were detected"):
+        suggest_exclusion_from_file(
+            str(data_path),
+            epoch_config={
+                "pre_stim_ms": 4,
+                "post_stim_ms": 8,
+                "flashes_per_session": FLASHES_PER_SESSION_LIMIT,
+                "num_sessions": 1,
+                "artifact_rejection_enabled": True,
+                "artifact_exclusion_uv": 0.01,
+            },
+            file_config={
+                "delimiter": "\t",
+                "trigger_column": 0,
+                "eeg_column": 1,
+                "skip_header": 0,
+                "trigger_mode": "threshold",
+                "trigger_threshold": 0.5,
+            },
+            bandpass_filter=DummyFilter(),
+        )
