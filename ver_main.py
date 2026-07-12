@@ -11,6 +11,7 @@ import serial.tools.list_ports
 from pathlib import Path
 
 import numpy as np
+import pyqtgraph as pg
 
 if getattr(sys, 'frozen', False):
     import pyi_splash
@@ -22,6 +23,7 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QDialogButtonBox,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
@@ -32,6 +34,7 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSlider,
     QTextBrowser,
     QSpinBox,
     QTabWidget,
@@ -152,6 +155,173 @@ class DownsampleDialog(QDialog):
             self._status_label.setPlainText(f"Saved: {output_path}")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Downsampling failed:\n{e}")
+
+
+class ExclusionTuningDialog(QDialog):
+    _THRESHOLD_SCALE = 10000
+
+    def __init__(self, suggestion, current_threshold_uv: float, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Exclusion Tuning")
+        self.resize(760, 520)
+
+        self.suggestion = suggestion
+        self.current_threshold_uv = max(float(current_threshold_uv), 0.0001)
+        peak_values = np.asarray(self.suggestion.peak_values_uv, dtype=float)
+        peak_max = float(np.max(peak_values)) if peak_values.size else self.current_threshold_uv
+        self.min_threshold_uv = 0.0001
+        self.max_threshold_uv = max(
+            self.min_threshold_uv * 2,
+            peak_max * 1.1,
+            float(self.suggestion.suggested_threshold_uv) * 1.2,
+            self.current_threshold_uv * 1.2,
+        )
+
+        layout = QVBoxLayout(self)
+        metric_label = QLabel(
+            "Whole-file histogram of max absolute amplitude per detected filtered epoch."
+        )
+        metric_label.setWordWrap(True)
+        layout.addWidget(metric_label)
+
+        self.hist_plot = pg.PlotWidget()
+        self.hist_plot.setBackground("k")
+        self.hist_plot.showGrid(x=True, y=True, alpha=0.2)
+        self.hist_plot.setLabel("bottom", "Max |epoch amplitude|", "µV")
+        self.hist_plot.setLabel("left", "Epoch count")
+        layout.addWidget(self.hist_plot, stretch=1)
+        self._populate_histogram(peak_values)
+
+        controls_layout = QHBoxLayout()
+        controls_layout.addWidget(QLabel("Threshold (±µV):"))
+
+        self.threshold_slider = QSlider(Qt.Orientation.Horizontal)
+        self.threshold_slider.setRange(
+            int(round(self.min_threshold_uv * self._THRESHOLD_SCALE)),
+            max(
+                int(round(self.min_threshold_uv * self._THRESHOLD_SCALE)),
+                int(round(self.max_threshold_uv * self._THRESHOLD_SCALE)),
+            ),
+        )
+        controls_layout.addWidget(self.threshold_slider, stretch=1)
+
+        self.threshold_spin = QDoubleSpinBox()
+        self.threshold_spin.setRange(self.min_threshold_uv, self.max_threshold_uv)
+        self.threshold_spin.setDecimals(4)
+        self.threshold_spin.setSingleStep(0.0005)
+        controls_layout.addWidget(self.threshold_spin)
+        layout.addLayout(controls_layout)
+
+        self.value_label = QLabel()
+        self.stats_label = QLabel()
+        self.stats_label.setWordWrap(True)
+        layout.addWidget(self.value_label)
+        layout.addWidget(self.stats_label)
+
+        self.button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Apply | QDialogButtonBox.StandardButton.Cancel
+        )
+        self.button_box.button(QDialogButtonBox.StandardButton.Apply).clicked.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+        layout.addWidget(self.button_box)
+
+        self._syncing_threshold = False
+        self.threshold_slider.valueChanged.connect(self._on_slider_changed)
+        self.threshold_spin.valueChanged.connect(self._on_spin_changed)
+        self._set_threshold(self.current_threshold_uv)
+
+    def _populate_histogram(self, peak_values: np.ndarray) -> None:
+        bin_count = max(6, min(24, int(np.sqrt(max(1, peak_values.size))) * 2))
+        counts, edges = np.histogram(peak_values, bins=bin_count)
+        centers = (edges[:-1] + edges[1:]) / 2.0
+        widths = np.diff(edges)
+        if widths.size == 0:
+            widths = np.asarray([self.min_threshold_uv], dtype=float)
+            centers = np.asarray([self.min_threshold_uv], dtype=float)
+            counts = np.asarray([1], dtype=float)
+        bars = pg.BarGraphItem(
+            x=centers,
+            height=counts,
+            width=widths * 0.9,
+            brush=pg.mkBrush(80, 160, 220, 180),
+            pen=pg.mkPen(160, 220, 255, width=1),
+        )
+        self.hist_plot.addItem(bars)
+
+        self.current_line = pg.InfiniteLine(
+            pos=self.current_threshold_uv,
+            angle=90,
+            pen=pg.mkPen((180, 180, 180), width=2, style=Qt.PenStyle.DashLine),
+            label="Current",
+            labelOpts={"position": 0.9, "color": "#dddddd", "fill": (0, 0, 0, 160)},
+        )
+        self.suggested_line = pg.InfiniteLine(
+            pos=float(self.suggestion.suggested_threshold_uv),
+            angle=90,
+            pen=pg.mkPen((0, 170, 255), width=2, style=Qt.PenStyle.DashLine),
+            label="Auto",
+            labelOpts={"position": 0.82, "color": "#66ccff", "fill": (0, 0, 0, 160)},
+        )
+        self.selected_line = pg.InfiniteLine(
+            pos=self.current_threshold_uv,
+            angle=90,
+            pen=pg.mkPen((255, 190, 0), width=3),
+            label="Selected",
+            labelOpts={"position": 0.74, "color": "#ffcc55", "fill": (0, 0, 0, 160)},
+        )
+        self.hist_plot.addItem(self.current_line)
+        self.hist_plot.addItem(self.suggested_line)
+        self.hist_plot.addItem(self.selected_line)
+
+        right_edge = max(self.max_threshold_uv, float(edges[-1]) if edges.size else self.max_threshold_uv)
+        self.hist_plot.setXRange(0.0, right_edge * 1.05, padding=0)
+
+    def _threshold_from_slider(self, slider_value: int) -> float:
+        return max(self.min_threshold_uv, slider_value / self._THRESHOLD_SCALE)
+
+    def _slider_from_threshold(self, threshold_uv: float) -> int:
+        return int(round(max(self.min_threshold_uv, threshold_uv) * self._THRESHOLD_SCALE))
+
+    def _set_threshold(self, threshold_uv: float) -> None:
+        threshold = min(max(float(threshold_uv), self.min_threshold_uv), self.max_threshold_uv)
+        if self._syncing_threshold:
+            return
+        self._syncing_threshold = True
+        try:
+            self.threshold_spin.setValue(threshold)
+            self.threshold_slider.setValue(self._slider_from_threshold(threshold))
+            self.selected_line.setValue(threshold)
+            self._update_stats(threshold)
+        finally:
+            self._syncing_threshold = False
+
+    def _on_slider_changed(self, slider_value: int) -> None:
+        if self._syncing_threshold:
+            return
+        self._set_threshold(self._threshold_from_slider(slider_value))
+
+    def _on_spin_changed(self, threshold_uv: float) -> None:
+        if self._syncing_threshold:
+            return
+        self._set_threshold(threshold_uv)
+
+    def _update_stats(self, threshold_uv: float) -> None:
+        stats = self.suggestion.stats_for_threshold(threshold_uv)
+        self.value_label.setText(
+            f"Selected threshold: <b>±{threshold_uv:.4f} µV</b> "
+            f"(auto: ±{self.suggestion.suggested_threshold_uv:.4f} µV, "
+            f"current: ±{self.current_threshold_uv:.4f} µV)"
+        )
+        self.stats_label.setText(
+            "Detected epochs (whole file): "
+            f"{stats.total_epochs}    "
+            f"Estimated rejected epochs: {stats.rejected_epochs} of {stats.total_epochs}    "
+            f"Estimated accepted epochs: {stats.accepted_epochs} of {stats.total_epochs}    "
+            f"Estimated reject percentage: {stats.rejected_percent:.1f}%"
+        )
+
+    def selected_threshold_uv(self) -> float:
+        return float(self.threshold_spin.value())
 
 
 class AcquisitionWorker(QObject):
@@ -727,16 +897,15 @@ class VERMainWindow(QMainWindow):
             QMessageBox.critical(self, "Suggest Exclusion", f"Failed to estimate exclusion threshold:\n{exc}")
             return
 
-        QMessageBox.information(
-            self,
-            "Suggest Exclusion",
-            (
-                f"Suggested exclusion threshold: ±{suggestion.suggested_threshold_uv:.4f} µV\n"
-                f"Detected epochs (whole file): {suggestion.total_epochs}\n"
-                f"Estimated accepted epochs: {suggestion.accepted_epochs}\n"
-                f"Estimated rejected epochs: {suggestion.rejected_epochs}"
-            ),
+        tuning_dialog = ExclusionTuningDialog(
+            suggestion,
+            current_threshold_uv=float(EPOCH_CONFIG.get("artifact_exclusion_uv", 0.01)),
+            parent=self,
         )
+        if tuning_dialog.exec() == QDialog.DialogCode.Accepted:
+            applied_threshold = tuning_dialog.selected_threshold_uv()
+            self._apply_exclusion_threshold(applied_threshold)
+            self.display.set_status(f"Applied exclusion threshold: ±{applied_threshold:.4f} µV")
 
     def _restart_worker_with_file(self):
         self._shutdown_worker()
@@ -940,6 +1109,12 @@ class VERMainWindow(QMainWindow):
         if hasattr(self, "scope") and self.scope is not None:
             self.scope.config["artifact_rejection_enabled"] = artifact_enabled
             self.scope.config["artifact_exclusion_uv"] = artifact_threshold
+
+    def _apply_exclusion_threshold(self, threshold_uv: float) -> None:
+        threshold = max(float(threshold_uv), 0.0001)
+        self.set_artifact_threshold.setValue(threshold)
+        self._sync_artifact_settings_from_ui()
+        self.settings_manager.save_settings(self.settings_manager.settings)
 
     def _save_user_settings(self):
         """Grabs the values from the UI, saves them to JSON, and updates live memory."""

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -17,11 +17,35 @@ MIN_THRESHOLD_UV = 1e-6
 
 
 @dataclass(frozen=True)
+class ExclusionThresholdStats:
+    threshold_uv: float
+    total_epochs: int
+    accepted_epochs: int
+    rejected_epochs: int
+    rejected_percent: float
+
+
+@dataclass(frozen=True)
 class ExclusionSuggestion:
     suggested_threshold_uv: float
     total_epochs: int
     accepted_epochs: int
     rejected_epochs: int
+    peak_values_uv: np.ndarray = field(repr=False)
+
+    def stats_for_threshold(self, threshold_uv: float) -> ExclusionThresholdStats:
+        threshold = max(float(threshold_uv), 0.0)
+        rejected = int(np.count_nonzero(self.peak_values_uv > threshold))
+        total = int(self.peak_values_uv.size)
+        accepted = total - rejected
+        rejected_percent = (rejected / total * 100.0) if total else 0.0
+        return ExclusionThresholdStats(
+            threshold_uv=threshold,
+            total_epochs=total,
+            accepted_epochs=accepted,
+            rejected_epochs=rejected,
+            rejected_percent=rejected_percent,
+        )
 
 
 def _suggest_threshold_from_peaks(peak_values: np.ndarray) -> float:
@@ -73,13 +97,20 @@ def suggest_exclusion_from_file(
 
     peak_values = np.asarray(epoch_peak_abs, dtype=float)
     suggested_threshold = _suggest_threshold_from_peaks(peak_values)
-    rejected = int(np.count_nonzero(peak_values > suggested_threshold))
     total = int(peak_values.size)
-    accepted = total - rejected
+    suggestion = ExclusionSuggestion(
+        suggested_threshold_uv=suggested_threshold,
+        total_epochs=total,
+        accepted_epochs=0,
+        rejected_epochs=0,
+        peak_values_uv=peak_values.copy(),
+    )
+    suggested_stats = suggestion.stats_for_threshold(suggested_threshold)
 
     return ExclusionSuggestion(
         suggested_threshold_uv=suggested_threshold,
         total_epochs=total,
-        accepted_epochs=accepted,
-        rejected_epochs=rejected,
+        accepted_epochs=suggested_stats.accepted_epochs,
+        rejected_epochs=suggested_stats.rejected_epochs,
+        peak_values_uv=peak_values.copy(),
     )
