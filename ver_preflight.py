@@ -111,13 +111,12 @@ def suggest_exclusion_from_file(
 
     peak_values = np.asarray(epoch_peak_abs, dtype=float)
     suggested_threshold = _suggest_threshold_from_peaks(peak_values)
-    peak_values_copy = peak_values.copy()
-    suggested_stats = _build_threshold_stats(peak_values_copy, suggested_threshold)
+    suggested_stats = _build_threshold_stats(peak_values, suggested_threshold)
 
     return ExclusionSuggestion(
         suggested_threshold_uv=suggested_threshold,
         total_epochs=suggested_stats.total_epochs,
         accepted_epochs=suggested_stats.accepted_epochs,
         rejected_epochs=suggested_stats.rejected_epochs,
-        peak_values_uv=peak_values_copy,
+        peak_values_uv=peak_values.copy(),
     )

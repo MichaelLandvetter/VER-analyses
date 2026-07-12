@@ -59,7 +59,6 @@ from ver_preflight import suggest_exclusion_from_file
 
 log = logging.getLogger(__name__)
 ARTIFACT_THRESHOLD_MIN_UV = 0.0001
-DEFAULT_ARTIFACT_THRESHOLD_UV = 0.01
 
 def auto_detect_file_format(filepath: str) -> str | None:
     """
@@ -265,6 +264,7 @@ class ExclusionTuningDialog(QDialog):
         centers = (edges[:-1] + edges[1:]) / 2.0
         widths = np.diff(edges)
         if widths.size == 0:
+            log.warning("Fell back to placeholder exclusion histogram bins for degenerate peak data.")
             # Degenerate fallback for an unexpectedly empty histogram definition.
             # Reuse the minimum threshold scale so the placeholder bar remains
             # visible without overstating the distribution width.
@@ -941,9 +941,7 @@ class VERMainWindow(QMainWindow):
 
         tuning_dialog = ExclusionTuningDialog(
             suggestion,
-            current_threshold_uv=float(
-                EPOCH_CONFIG.get("artifact_exclusion_uv", DEFAULT_ARTIFACT_THRESHOLD_UV)
-            ),
+            current_threshold_uv=float(self.set_artifact_threshold.value()),
             parent=self,
         )
         if tuning_dialog.exec() == QDialog.DialogCode.Accepted:

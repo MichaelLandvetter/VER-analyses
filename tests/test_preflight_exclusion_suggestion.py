@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from ver_preflight import suggest_exclusion_from_file
 
@@ -94,7 +95,7 @@ def test_suggest_exclusion_raises_when_no_complete_epochs_detected(tmp_path):
     data_path = tmp_path / "preflight_no_epochs.txt"
     np.savetxt(data_path, np.zeros((10, 2), dtype=float), delimiter="\t", fmt="%.6f")
 
-    try:
+    with pytest.raises(ValueError, match="No complete epochs were detected"):
         suggest_exclusion_from_file(
             str(data_path),
             epoch_config={
@@ -115,7 +116,3 @@ def test_suggest_exclusion_raises_when_no_complete_epochs_detected(tmp_path):
             },
             bandpass_filter=DummyFilter(),
         )
-    except ValueError as exc:
-        assert "No complete epochs were detected" in str(exc)
-    else:  # pragma: no cover
-        raise AssertionError("Expected suggest_exclusion_from_file to fail when no epochs are detected")
