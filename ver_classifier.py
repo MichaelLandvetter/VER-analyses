@@ -1,15 +1,54 @@
 """Module for evaluating and classifying Visually Evoked Responses (VERs)."""
 
+import logging
 from typing import Tuple, Dict, Optional
-from ver_settings import SettingsManager 
 
-def evaluate_ver_peak(peak_scale: float, peak_power: float, p1_latency, p2_latency, p3_latency, p2_snr_val: float):
-    # 1. Create an instance of the manager FIRST
-    manager = SettingsManager()
-    
-    # 2. NOW call load_settings() on that instance
-    cfg = manager.load_settings().get("CLASSIFIER_CONFIG", {})
-    
+log = logging.getLogger(__name__)
+
+# Module-level settings cache.  Populated on the first call and refreshed
+# whenever the caller passes an explicit ``classifier_cfg`` dict (e.g. after
+# the user clicks "Save Settings" in the GUI).
+_cached_classifier_cfg: dict | None = None
+
+
+def _get_classifier_cfg(override: dict | None) -> dict:
+    """Return classifier config, using the module cache unless an override is supplied."""
+    global _cached_classifier_cfg
+    if override is not None:
+        _cached_classifier_cfg = override
+        return override
+    if _cached_classifier_cfg is not None:
+        return _cached_classifier_cfg
+    # First-time load only.
+    try:
+        from ver_settings import SettingsManager
+        _cached_classifier_cfg = SettingsManager().load_settings().get("CLASSIFIER_CONFIG", {})
+    except Exception as exc:
+        log.warning("Could not load CLASSIFIER_CONFIG from settings: %s", exc)
+        _cached_classifier_cfg = {}
+    return _cached_classifier_cfg
+
+
+def refresh_classifier_cfg(cfg: dict) -> None:
+    """Push an updated classifier config dict into the module cache.
+
+    Call this after the user saves settings in the GUI so that subsequent
+    ``evaluate_ver_peak`` calls use the new values without restarting.
+    """
+    _get_classifier_cfg(cfg)
+
+
+def evaluate_ver_peak(
+    peak_scale: float,
+    peak_power: float,
+    p1_latency,
+    p2_latency,
+    p3_latency,
+    p2_snr_val: float,
+    classifier_cfg: dict | None = None,
+):
+    cfg = _get_classifier_cfg(classifier_cfg)
+
     # Extract values with defaults
     min_scale = cfg.get("min_scale", 8.0)
     max_scale = cfg.get("max_scale", 32.0)

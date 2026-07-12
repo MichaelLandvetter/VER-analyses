@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import shutil
 import sys
 import time
 import serial
@@ -39,8 +41,10 @@ from PyQt6.QtWidgets import (
 
 from ver_acquisition import FileAcquisitionSimulator, SerialAcquisitionSource
 from ver_config import ACQ_CONFIG, EPOCH_CONFIG, FILE_CONFIG, FILE_FORMATS, FILTER_CONFIG, SERIAL_CONFIG
+from ver_constants import DEFAULT_SCOPE_FILTER_MODE, SCOPE_FILTER_MODES
 from ver_display import VERDisplayWidget
 from ver_filter import BandpassFilter
+from ver_logging import setup_logging
 from ver_peaks import detect_ver_peaks
 from ver_report import save_ver_report
 from ver_scope import VERScopeProcessor
@@ -48,6 +52,8 @@ from ver_wavelet import compute_wavelet_scalogram
 from ver_downsample import downsample_labchart_file
 from ver_settings import SettingsManager
 from ver_ml_logger import launch_ml_logger
+
+log = logging.getLogger(__name__)
 
 def auto_detect_file_format(filepath: str) -> str | None:
     """
@@ -77,8 +83,8 @@ def auto_detect_file_format(filepath: str) -> str | None:
                 
                 return None # Unknown format
     except Exception as e:
-        print(f"Error reading file for auto-detection: {e}")
-    
+        log.exception("Error reading file for auto-detection: %s", e)
+
     return None
 
 class DownsampleDialog(QDialog):
@@ -185,6 +191,7 @@ class AcquisitionWorker(QObject):
                 self.sample_ready.emit(np.vstack(batch))
             self.eof_reached.emit()
         except Exception as exc:  # pragma: no cover
+            log.exception("AcquisitionWorker unexpected error")
             self.error.emit(str(exc))
         finally:
             close_fn = getattr(self.source, "close", None)
@@ -274,12 +281,19 @@ class ClassifierSettingsTab(QWidget):
                 self.cfg[key] = spin.value() * 1e-7
             else:
                 self.cfg[key] = spin.value()
-        
+
         self.sm.settings["CLASSIFIER_CONFIG"] = self.cfg
         self.sm.save_settings()
+
+        # Refresh module-level caches so the new config takes effect immediately.
+        import ver_classifier
+        import ver_peaks
+        ver_classifier.refresh_classifier_cfg(self.cfg)
+        ver_peaks.refresh_classifier_cfg(self.cfg)
+
         QMessageBox.information(
-            self, 
-            "Settings Saved", 
+            self,
+            "Settings Saved",
             "Settings applied! Settings saved to user_settings.json.\n\nRestart the application for all changes to take effect."
         )
 
@@ -381,16 +395,7 @@ class VERMainWindow(QMainWindow):
         
         # Add the Scope Filter Dropdown
         self.scope_filter_combo = QComboBox()
-        self.scope_filter_combo.addItems([
-            "Butterworth", 
-            "FIR (Linear Phase)", 
-            "Savitzky-Golay (Peak Preserve)"
-#             "Wavelet (Aggressive)",
-#             "Wavelet (Gentle)",
-#             "Wavelet (db4 Level 5 Extraction)"
-             
-        ])
-        #self.scope_filter_combo.currentTextChanged.connect(self._on_scope_filter_changed)
+        self.scope_filter_combo.addItems(SCOPE_FILTER_MODES)
 
         apply_filter_btn = QPushButton("Apply Filter")
         apply_filter_btn.clicked.connect(self._apply_filter_settings)
@@ -602,14 +607,9 @@ class VERMainWindow(QMainWindow):
                 padding: 10px;
             }
         """)
-        self.max_speed_warning.hide() 
+        self.max_speed_warning.hide()
         self.max_speed_warning.raise_()
-        
-#     def _on_scope_filter_changed(self, mode: str):
-#         if hasattr(self, 'bandpass_filter'):
-#             self.bandpass_filter.set_scope_mode(mode)
 
-    
     def _on_speed_changed(self, text: str):
         if self.worker is not None:
             if "Maximum" in text:
@@ -926,6 +926,14 @@ class VERMainWindow(QMainWindow):
 
         # Save to JSON and apply to live config!
         self.settings_manager.save_settings(new_settings)
+
+        # Refresh the module-level caches in classifier/peaks so that the
+        # updated config takes effect without requiring a restart.
+        new_classifier_cfg = new_settings.get("CLASSIFIER_CONFIG", {})
+        import ver_classifier
+        import ver_peaks
+        ver_classifier.refresh_classifier_cfg(new_classifier_cfg)
+        ver_peaks.refresh_classifier_cfg(new_classifier_cfg)
         
         QMessageBox.information(self, "Settings Saved", "Settings saved successfully! \n\n You may need to click 'Reset' or analyze a new file for changes to take effect.")
 
@@ -1033,31 +1041,6 @@ class VERMainWindow(QMainWindow):
             self.start_btn.setText("Start")
             self._shutdown_worker()
             self.max_speed_warning.hide()
-            
-#     def _handle_eof(self):
-#         self.max_speed_warning.hide() # Force hide here
-#         self.stop_acquisition()
-#         partial_session = self.scope.save_partial_session(EPOCH_CONFIG["flashes_per_session"] // 2)
-#         if partial_session is not None:
-#             self._record_session(
-#                 partial_session["session_average"],
-#                 partial_session["session_number"],
-#                 flash_count=partial_session["flash_count"],
-#             )
-#         if self.scope.session_averages:
-#             resp = QMessageBox.question(
-#                 self,
-#                 "End of file",
-#                 "Reached end of file. will start human validation?",
-#                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-#                 QMessageBox.StandardButton.Yes,
-#             )
-#             if resp == QMessageBox.StandardButton.Yes:
-#                 self.save_report()
-#         self.display.set_status("End of file reached")
-#         self.start_btn.setText("Start")
-#         self._shutdown_worker()
-#         self.max_speed_warning.hide()
 
     def _handle_worker_error(self, message: str):
         QMessageBox.critical(self, "Acquisition error", message)
@@ -1185,11 +1168,12 @@ class VERMainWindow(QMainWindow):
                 session_artifact_exclusion_thresholds=self.session_artifact_exclusion_thresholds if self.session_artifact_exclusion_thresholds else None,
             )
         except PermissionError:
-            load_ui.accept() # Close loading box on error
+            load_ui.accept()
             QMessageBox.warning(self, "File Access Denied", "Could not save the report because the PDF or CSV file is currently open.\n\nPlease close the file and try saving again.")
-            return 
+            return
         except Exception as e:
-            load_ui.accept() # Close loading box on error
+            log.exception("Failed to save report (pass 1)")
+            load_ui.accept()
             QMessageBox.critical(self, "Error", f"Failed to save report:\n{e}")
             return
 
@@ -1245,7 +1229,8 @@ class VERMainWindow(QMainWindow):
                         force_stem=original_stem 
                     )
                 except Exception as e:
-                    save_ui.accept() # Close loading box on error
+                    log.exception("Failed to save validated report (pass 2)")
+                    save_ui.accept()
                     QMessageBox.critical(self, "Error", f"Failed to save validated report:\n{e}")
                     return
                 
@@ -1272,14 +1257,13 @@ class VERMainWindow(QMainWindow):
                 
                 raw_path = Path(self.worker.source._raw_log_path)
                 if raw_path.exists():
-                    import shutil
                     new_path = Path(report_dir_str) / raw_path.name
                     try:
                         shutil.move(str(raw_path), str(new_path))
                         raw_file_name = raw_path.name
                         self.worker.source._raw_log_path = None 
                     except Exception as e:
-                        print(f"Could not move raw file: {e}")
+                        log.warning("Could not move raw file: %s", e)
         
         # The user only sees this AFTER they are completely done!
         QMessageBox.information(
@@ -1292,21 +1276,22 @@ class VERMainWindow(QMainWindow):
             f"Waveforms CSV: {waveforms_csv_name}\n"
             f"RAW Data: {raw_file_name}"
         )
-        
-            
-def closeEvent(self, event):
+
+    def closeEvent(self, event):
         self._shutdown_worker()
         super().closeEvent(event)
 
 
 def main():
+    log_path = setup_logging()
+    log.info("VER Analysis application starting (log: %s)", log_path)
     app = QApplication(sys.argv)
     win = VERMainWindow()
     win.show()
-    
+
     if getattr(sys, 'frozen', False):
         pyi_splash.close()
-    
+
     sys.exit(app.exec())
 
 
