@@ -87,7 +87,7 @@ def test_threshold_stats_update_live_counts_from_same_peak_metric(tmp_path):
     assert stats.total_epochs == 6
     assert stats.accepted_epochs == 4
     assert stats.rejected_epochs == 2
-    assert np.isclose(stats.rejected_percent, 33.3333333333)
+    assert np.isclose(stats.rejected_percent, (2 / 6) * 100.0)
 
 
 def test_suggest_exclusion_raises_when_no_complete_epochs_detected(tmp_path):
