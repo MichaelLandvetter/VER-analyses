@@ -108,6 +108,7 @@ Each flash-locked epoch is tested against a symmetric amplitude threshold before
   - **Enable artifact rejection** — checkbox to turn the feature on or off.
   - **Exclusion threshold (±)** — symmetric amplitude limit (same units as the EEG signal, default 0.01). Varies by species; fish studies typically use ±0.01.
 - Settings are persisted to `user_settings.json` and take effect immediately for the active session.
+- Use **Suggest Exclusion** (next to **Open Data File**) to run a whole-file pre-analysis pass and get a suggested symmetric threshold before running analysis.
 - Session completion is still based on total flashes detected (not accepted epochs), matching LabChart behaviour.
 - The progress bar shows `Flash total/N | Accepted A | Rejected R` during acquisition.
 - The summary CSV (`_summary.csv`) includes columns `N_flashes_total`, `N_flashes_accepted`, `N_flashes_rejected`, `Exclusion_Enabled`, and `Exclusion_Threshold` per block.

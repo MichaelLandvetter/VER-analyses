@@ -52,6 +52,7 @@ from ver_wavelet import compute_wavelet_scalogram
 from ver_downsample import downsample_labchart_file
 from ver_settings import SettingsManager
 from ver_ml_logger import launch_ml_logger
+from ver_preflight import suggest_exclusion_from_file
 
 log = logging.getLogger(__name__)
 
@@ -381,6 +382,9 @@ class VERMainWindow(QMainWindow):
         self.file_label = QLabel("No file selected")
         open_btn = QPushButton("Open Data File")
         open_btn.clicked.connect(lambda: self._select_data_file(initial=False))
+        self.suggest_exclusion_btn = QPushButton("Suggest Exclusion")
+        self.suggest_exclusion_btn.setEnabled(False)
+        self.suggest_exclusion_btn.clicked.connect(self._suggest_exclusion)
         self.format_combo = QComboBox()
         self.format_combo.addItems(list(FILE_FORMATS.keys()))
         self.format_combo.currentTextChanged.connect(self._on_format_changed)
@@ -461,6 +465,7 @@ class VERMainWindow(QMainWindow):
         layout2 = QVBoxLayout() 
         file_controls_layout = QHBoxLayout()
         file_controls_layout.addWidget(open_btn)
+        file_controls_layout.addWidget(self.suggest_exclusion_btn)
         file_controls_layout.addWidget(QLabel("Format:"))
         file_controls_layout.addWidget(self.format_combo)
         layout2.addWidget(self.file_label)
@@ -671,6 +676,7 @@ class VERMainWindow(QMainWindow):
         
         if selected:
             self.data_file = selected
+            self.suggest_exclusion_btn.setEnabled(True)
             self.file_label.setText(f"Selected: {Path(selected).name}")
             self.display.set_status(f"Loaded file: {Path(selected).name}")
             
@@ -695,6 +701,7 @@ class VERMainWindow(QMainWindow):
             fallback = Path(__file__).with_name("RAW_files_combined.txt")
             if fallback.exists():
                 self.data_file = str(fallback)
+                self.suggest_exclusion_btn.setEnabled(True)
                 self.file_label.setText(f"Selected: {fallback.name}")
                 self.display.set_status(f"Loaded file: {fallback.name}")
                 
@@ -704,6 +711,32 @@ class VERMainWindow(QMainWindow):
                     index = self.format_combo.findText(detected_format)
                     if index >= 0:
                         self.format_combo.setCurrentIndex(index)
+
+    def _suggest_exclusion(self):
+        if not self.data_file:
+            QMessageBox.information(self, "Suggest Exclusion", "Please open a data file first.")
+            return
+
+        try:
+            suggestion = suggest_exclusion_from_file(
+                self.data_file,
+                epoch_config=dict(EPOCH_CONFIG),
+                bandpass_filter=self.bandpass,
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Suggest Exclusion", f"Failed to estimate exclusion threshold:\n{exc}")
+            return
+
+        QMessageBox.information(
+            self,
+            "Suggest Exclusion",
+            (
+                f"Suggested exclusion threshold: ±{suggestion.suggested_threshold_uv:.4f}\n"
+                f"Detected epochs (whole file): {suggestion.total_epochs}\n"
+                f"Estimated accepted epochs: {suggestion.accepted_epochs}\n"
+                f"Estimated rejected epochs: {suggestion.rejected_epochs}"
+            ),
+        )
 
     def _restart_worker_with_file(self):
         self._shutdown_worker()
