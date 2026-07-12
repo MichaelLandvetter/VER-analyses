@@ -15,6 +15,8 @@ MAD_TO_SIGMA = 1.4826  # Converts MAD to std-dev equivalent assuming normal dist
 ROBUST_SIGMA_MULTIPLIER = 3.0
 MIN_THRESHOLD_UV = 1e-6
 MIN_SELECTABLE_THRESHOLD_UV = 1e-4
+# Keep 1 in every N samples for the display trace (~62.5 Hz at 250 Hz input).
+_SIGNAL_DOWNSAMPLE_FACTOR = 4
 
 
 def _build_threshold_stats(peak_values: np.ndarray, threshold_uv: float) -> ExclusionThresholdStats:
@@ -48,9 +50,15 @@ class ExclusionSuggestion:
     """Whole-file exclusion tuning data.
 
     `peak_values_uv` stores one max-absolute filtered amplitude value per detected
-    epoch, as a 1-D NumPy array, so the UI can render the histogram and recompute
-    accepted/rejected estimates live without re-parsing the file. It is hidden
-    from `repr` to avoid dumping large arrays in logs or test failures.
+    epoch, as a 1-D NumPy array, so the UI can recompute accepted/rejected estimates
+    live without re-parsing the file.
+
+    `filtered_signal_uv` holds a downsampled copy of the causal-filtered continuous
+    signal (1 in every `_SIGNAL_DOWNSAMPLE_FACTOR` samples) so the UI can render a
+    time-series plot for visual threshold selection.  `signal_sample_rate` gives the
+    effective sample rate of that downsampled trace.
+
+    Large arrays are hidden from `repr` to avoid dumping them in logs or test output.
     """
 
     suggested_threshold_uv: float
@@ -58,6 +66,10 @@ class ExclusionSuggestion:
     accepted_epochs: int
     rejected_epochs: int
     peak_values_uv: np.ndarray = field(repr=False)
+    filtered_signal_uv: np.ndarray = field(
+        default_factory=lambda: np.array([], dtype=float), repr=False
+    )
+    signal_sample_rate: float = 0.0  # effective Hz of filtered_signal_uv after downsampling
 
     def stats_for_threshold(self, threshold_uv: float) -> ExclusionThresholdStats:
         return _build_threshold_stats(self.peak_values_uv, threshold_uv)
@@ -101,18 +113,41 @@ def suggest_exclusion_from_file(
         }
     )
 
+    # Separate causal filter for the continuous streaming signal display trace.
+    # Using the same settings as scope_filter but independent state so the epoch
+    # zero-phase path is not affected.
+    stream_filter = BandpassFilter(
+        {
+            "lowcut_hz": float(FILTER_CONFIG["lowcut_hz"]),
+            "highcut_hz": float(FILTER_CONFIG["highcut_hz"]),
+            "sample_rate": float(FILTER_CONFIG["sample_rate"]),
+            "order": int(FILTER_CONFIG["order"]),
+        }
+    )
+
     scope = VERScopeProcessor(scope_filter, epoch_config=epoch_config)
     simulator = FileAcquisitionSimulator(file_path, speed_factor=None, file_config=active_file_config)
     epoch_peak_abs: list[float] = []
+    display_signal: list[float] = []
+    sample_index = 0
 
     for sample in simulator.stream_samples():
         result = scope.process_sample(bool(sample[0]), float(sample[1]))
         if result["epoch_complete"] and result["completed_epoch"] is not None:
             epoch_peak_abs.append(float(np.max(np.abs(result["completed_epoch"]))))
 
+        # Collect downsampled streaming-filtered signal for the signal plot.
+        filt_val = stream_filter.process_sample(float(sample[1]))
+        if sample_index % _SIGNAL_DOWNSAMPLE_FACTOR == 0:
+            display_signal.append(filt_val)
+        sample_index += 1
+
     peak_values = np.asarray(epoch_peak_abs, dtype=float)
     suggested_threshold = _suggest_threshold_from_peaks(peak_values)
     suggested_stats = _build_threshold_stats(peak_values, suggested_threshold)
+
+    input_sample_rate = float(FILTER_CONFIG["sample_rate"])
+    display_sample_rate = input_sample_rate / _SIGNAL_DOWNSAMPLE_FACTOR
 
     return ExclusionSuggestion(
         suggested_threshold_uv=suggested_threshold,
@@ -120,4 +155,6 @@ def suggest_exclusion_from_file(
         accepted_epochs=suggested_stats.accepted_epochs,
         rejected_epochs=suggested_stats.rejected_epochs,
         peak_values_uv=peak_values,
+        filtered_signal_uv=np.asarray(display_signal, dtype=float),
+        signal_sample_rate=display_sample_rate,
     )
