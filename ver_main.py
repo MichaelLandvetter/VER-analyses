@@ -59,6 +59,7 @@ from ver_preflight import suggest_exclusion_from_file
 
 log = logging.getLogger(__name__)
 ARTIFACT_THRESHOLD_MIN_UV = 0.0001
+DEFAULT_ARTIFACT_THRESHOLD_UV = 0.01
 
 def auto_detect_file_format(filepath: str) -> str | None:
     """
@@ -170,7 +171,14 @@ class ExclusionTuningDialog(QDialog):
         self.resize(760, 520)
 
         self.suggestion = suggestion
-        self.current_threshold_uv = max(float(current_threshold_uv), ARTIFACT_THRESHOLD_MIN_UV)
+        raw_current_threshold_uv = float(current_threshold_uv)
+        self.current_threshold_uv = max(raw_current_threshold_uv, ARTIFACT_THRESHOLD_MIN_UV)
+        if self.current_threshold_uv != raw_current_threshold_uv:
+            log.debug(
+                "Clamped exclusion tuning threshold from %.6f to %.6f µV",
+                raw_current_threshold_uv,
+                self.current_threshold_uv,
+            )
         peak_values = np.asarray(self.suggestion.peak_values_uv, dtype=float)
         peak_max = float(np.max(peak_values)) if peak_values.size else self.current_threshold_uv
         self.min_threshold_uv = ARTIFACT_THRESHOLD_MIN_UV
@@ -235,7 +243,7 @@ class ExclusionTuningDialog(QDialog):
         self._set_threshold(self.current_threshold_uv)
 
     def _populate_histogram(self, peak_values: np.ndarray) -> None:
-        # Clamp bins between 6 and 24 using a lightweight 2*sqrt(n) heuristic so
+        # Clamp bins between 6 and 24 using a lightweight sqrt(n) * 2 heuristic so
         # sparse files still show shape while very large files remain compact.
         bin_count = max(
             self._MIN_HISTOGRAM_BINS,
@@ -248,6 +256,9 @@ class ExclusionTuningDialog(QDialog):
         centers = (edges[:-1] + edges[1:]) / 2.0
         widths = np.diff(edges)
         if widths.size == 0:
+            # Degenerate fallback for an unexpectedly empty histogram definition.
+            # Reuse the minimum threshold scale so the placeholder bar remains
+            # visible without overstating the distribution width.
             widths = np.asarray([self.min_threshold_uv], dtype=float)
             centers = np.asarray([self.min_threshold_uv], dtype=float)
             counts = np.asarray([1], dtype=float)
@@ -911,7 +922,9 @@ class VERMainWindow(QMainWindow):
 
         tuning_dialog = ExclusionTuningDialog(
             suggestion,
-            current_threshold_uv=float(EPOCH_CONFIG.get("artifact_exclusion_uv", 0.01)),
+            current_threshold_uv=float(
+                EPOCH_CONFIG.get("artifact_exclusion_uv", DEFAULT_ARTIFACT_THRESHOLD_UV)
+            ),
             parent=self,
         )
         if tuning_dialog.exec() == QDialog.DialogCode.Accepted:
@@ -1123,7 +1136,14 @@ class VERMainWindow(QMainWindow):
             self.scope.config["artifact_exclusion_uv"] = artifact_threshold
 
     def _apply_exclusion_threshold(self, threshold_uv: float) -> None:
-        threshold = max(float(threshold_uv), ARTIFACT_THRESHOLD_MIN_UV)
+        raw_threshold = float(threshold_uv)
+        threshold = max(raw_threshold, ARTIFACT_THRESHOLD_MIN_UV)
+        if threshold != raw_threshold:
+            log.debug(
+                "Clamped applied exclusion threshold from %.6f to %.6f µV",
+                raw_threshold,
+                threshold,
+            )
         self.set_artifact_threshold.setValue(threshold)
         self._sync_artifact_settings_from_ui()
         self.settings_manager.save_settings(self.settings_manager.settings)

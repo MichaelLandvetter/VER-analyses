@@ -33,6 +33,8 @@ def _build_threshold_stats(peak_values: np.ndarray, threshold_uv: float) -> Excl
 
 @dataclass(frozen=True)
 class ExclusionThresholdStats:
+    """Accepted/rejected whole-file counts for a candidate symmetric threshold."""
+
     threshold_uv: float
     total_epochs: int
     accepted_epochs: int
@@ -42,6 +44,14 @@ class ExclusionThresholdStats:
 
 @dataclass(frozen=True)
 class ExclusionSuggestion:
+    """Whole-file exclusion tuning data.
+
+    `peak_values_uv` stores one max-absolute filtered amplitude value per detected
+    epoch, as a 1-D NumPy array, so the UI can render the histogram and recompute
+    accepted/rejected estimates live without re-parsing the file. It is hidden
+    from `repr` to avoid dumping large arrays in logs or test failures.
+    """
+
     suggested_threshold_uv: float
     total_epochs: int
     accepted_epochs: int
