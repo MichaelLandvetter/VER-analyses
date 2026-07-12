@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 import numpy as np
 from scipy.signal import butter, sosfilt, sosfilt_zi, sosfiltfilt, savgol_filter, firwin, filtfilt
-import pywt  
 
 from ver_config import FILTER_CONFIG
+from ver_constants import DEFAULT_SCOPE_FILTER_MODE, SCOPE_FILTER_FIR, SCOPE_FILTER_SAVGOL
+
+log = logging.getLogger(__name__)
+
 
 class BandpassFilter:
     """Butterworth bandpass filter with selectable zero-phase paths for the scope."""
@@ -18,10 +22,9 @@ class BandpassFilter:
             self.config.update(config)
         self._dc_mean = 0.0
         self._dc_count = 0
-        
-        # Default scope mode
-        self.scope_mode = "Butterworth (Legacy)"  
-        
+
+        self.scope_mode = DEFAULT_SCOPE_FILTER_MODE
+
         self.redesign(self.config["lowcut_hz"], self.config["highcut_hz"])
 
     def set_scope_mode(self, mode: str):
@@ -77,109 +80,33 @@ class BandpassFilter:
 
         # --- APPLY THE SELECTED SCOPE FILTER ---
         try:
-#             if self.scope_mode == "Wavelet (Aggressive)":
-#                 # Original strict thresholding
-#                 wavelet = 'db4'
-#                 level = pywt.dwt_max_level(len(centered), pywt.Wavelet(wavelet))
-#                 if level < 1: level = 1
-#                 coeffs = pywt.wavedec(centered, wavelet, level=level)
-#                 
-#                 cD1 = coeffs[-1]
-#                 sigma = np.median(np.abs(cD1)) / 0.6745
-#                 uthresh = sigma * np.sqrt(2 * np.log(len(centered)))
-#                 
-#                 denoised_coeffs = [coeffs[0]] + [pywt.threshold(c, value=uthresh, mode='soft') for c in coeffs[1:]]
-#                 y = pywt.waverec(denoised_coeffs, wavelet)
-#                 y = y[:len(centered)]
-#                 
-#                 low = self.config["lowcut_hz"] / self.nyquist
-#                 b, a = butter(self.config["order"], low, btype='high')
-#                 y = filtfilt(b, a, y, padlen=safe_padlen)
-# 
-#             elif self.scope_mode == "Wavelet (Gentle)":
-#                 # OPTIMIZED for weak VERs: Threshold scaled down
-#                 wavelet = 'db4'
-#                 level = pywt.dwt_max_level(len(centered), pywt.Wavelet(wavelet))
-#                 if level < 1: level = 1
-#                 coeffs = pywt.wavedec(centered, wavelet, level=level)
-#                 
-#                 cD1 = coeffs[-1]
-#                 sigma = np.median(np.abs(cD1)) / 0.6745
-#                 
-#                 base_thresh = sigma * np.sqrt(2 * np.log(len(centered)))
-#                 uthresh = base_thresh * 0.2 
-#                 
-#                 denoised_coeffs = [coeffs[0]] + [pywt.threshold(c, value=uthresh, mode='soft') for c in coeffs[1:]]
-#                 y = pywt.waverec(denoised_coeffs, wavelet)
-#                 y = y[:len(centered)]
-#                 
-#                 low = self.config["lowcut_hz"] / self.nyquist
-#                 b, a = butter(self.config["order"], low, btype='high')
-#                 y = filtfilt(b, a, y, padlen=safe_padlen)
-
-#             elif self.scope_mode == "Wavelet (db4 Level 5 Extraction)":
-#                 # 1. Pad the short epoch so pywt doesn't crash on Level 5
-#                 pad_len = 512 - len(centered) if len(centered) < 512 else 0
-#                 if pad_len > 0:
-#                     padded = np.pad(centered, (pad_len // 2, pad_len - pad_len // 2), mode='constant', constant_values=0)
-#                 else:
-#                     padded = centered
-# 
-#                 # 2. Decompose to Level 5 using db4
-#                 wavelet = 'db4'
-#                 coeffs = pywt.wavedec(padded, wavelet, level=5)
-#                 
-#                 # 3. Zero out the drift (cA5) and high-frequency noise (cD1, cD2, cD3)
-#                 coeffs[0] = np.zeros_like(coeffs[0]) # Delete cA5 (Baseline Drift)
-#                 coeffs[3] = np.zeros_like(coeffs[3]) # Delete cD3 
-#                 coeffs[4] = np.zeros_like(coeffs[4]) # Delete cD2
-#                 coeffs[5] = np.zeros_like(coeffs[5]) # Delete cD1 (High freq static)
-#                 
-#                 # 4. Apply your gentle 0.2 threshold specifically to the kept cD4 and cD5
-#                 cD1_for_noise = pywt.wavedec(centered, wavelet, level=1)[-1]
-#                 sigma = np.median(np.abs(cD1_for_noise)) / 0.6745
-#                 uthresh = (sigma * np.sqrt(2 * np.log(len(centered)))) * 0.2 # User's 0.2 factor
-#                 
-#                 coeffs[1] = pywt.threshold(coeffs[1], value=uthresh, mode='soft') # Clean cD5
-#                 coeffs[2] = pywt.threshold(coeffs[2], value=uthresh, mode='soft') # Clean cD4
-#                 
-#                 # 5. Reconstruct the signal using ONLY the VER bands
-#                 y_padded = pywt.waverec(coeffs, wavelet)
-#                 
-#                 # 6. Crop the padding back off to match the exact original epoch
-#                 if pad_len > 0:
-#                     start = pad_len // 2
-#                     y = y_padded[start:start+len(centered)]
-#                 else:
-#                     y = y_padded[:len(centered)]
-
-            if self.scope_mode == "FIR (Linear Phase)":
-                numtaps = int(self.sample_rate * 0.1) 
+            if self.scope_mode == SCOPE_FILTER_FIR:
+                numtaps = int(self.sample_rate * 0.1)
                 if numtaps % 2 == 0: numtaps += 1
                 if numtaps > len(centered) // 3:
-                    numtaps = (len(centered) // 3) | 1 
+                    numtaps = (len(centered) // 3) | 1
                 if numtaps < 5: numtaps = 5
-                
+
                 low = self.config["lowcut_hz"] / self.nyquist
                 high = self.config["highcut_hz"] / self.nyquist
                 taps = firwin(numtaps, [low, high], pass_zero=False)
                 y = filtfilt(taps, 1.0, centered, padlen=safe_padlen)
 
-            elif self.scope_mode == "Savitzky-Golay (Peak Preserve)":
-                window = int(self.sample_rate * 0.05) 
+            elif self.scope_mode == SCOPE_FILTER_SAVGOL:
+                window = int(self.sample_rate * 0.05)
                 if window % 2 == 0: window += 1
                 if window > len(centered): window = len(centered) | 1
                 if window < 5: window = 5
-                
+
                 savgol_y = savgol_filter(centered, window_length=window, polyorder=3)
                 y = sosfiltfilt(self.sos, savgol_y, padlen=safe_padlen)
-                
+
             else:
-                # Butterworth
+                # Butterworth (default)
                 y = sosfiltfilt(self.sos, centered, padlen=safe_padlen)
-                
+
             return y
-            
+
         except Exception as e:
-            print(f"Filter fallback triggered: {e}")
+            log.warning("Filter fallback triggered in mode '%s': %s", self.scope_mode, e)
             return sosfilt(self.sos, centered)

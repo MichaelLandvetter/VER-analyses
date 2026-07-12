@@ -1,16 +1,40 @@
 """Time-domain peak detection for VER waveforms (Peak-1, Peak-2, Peak-3)."""
 
 from __future__ import annotations
+import logging
 from typing import TypedDict
-from ver_settings import SettingsManager
 
 import numpy as np
 from scipy.signal import find_peaks
-from ver_settings import SettingsManager
 
 import ver_config
 
+log = logging.getLogger(__name__)
+
 MIN_NOISE_RMS = 1e-10
+
+# Module-level settings cache — loaded once on first use and replaced when
+# an explicit ``classifier_cfg`` dict is passed in (e.g. after user saves
+# settings in the GUI).
+_cached_classifier_cfg: dict | None = None
+
+
+def _get_classifier_cfg(override: dict | None) -> dict:
+    """Return the classifier config dict, using the module cache unless an override is given."""
+    global _cached_classifier_cfg
+    if override is not None:
+        _cached_classifier_cfg = override
+        return override
+    if _cached_classifier_cfg is not None:
+        return _cached_classifier_cfg
+    # First-time load only.
+    try:
+        from ver_settings import SettingsManager
+        _cached_classifier_cfg = SettingsManager().load_settings().get("CLASSIFIER_CONFIG", {})
+    except Exception as exc:
+        log.warning("Could not load CLASSIFIER_CONFIG from settings: %s", exc)
+        _cached_classifier_cfg = {}
+    return _cached_classifier_cfg
 
 
 class VERPeak(TypedDict):
@@ -33,14 +57,11 @@ VERPeaksResult = TypedDict(
 )
 
 
-def detect_ver_peaks(epoch_avg: np.ndarray, epoch_time_ms: np.ndarray) -> VERPeaksResult:
-    # 1. Create an instance of the manager FIRST
-    manager = SettingsManager()
-    
-    # 2. NOW call load_settings() on that instance
-    cfg = manager.load_settings().get("CLASSIFIER_CONFIG", {})
-    snr_threshold = cfg.get("snr_threshold", 2.0)
-    
+def detect_ver_peaks(
+    epoch_avg: np.ndarray,
+    epoch_time_ms: np.ndarray,
+    classifier_cfg: dict | None = None,
+) -> VERPeaksResult:
     """
     Detect the three largest peaks (any polarity) between 0 and 200ms post-stimulus.
     Uses baseline correction and prominence/distance constraints for robustness.
@@ -54,11 +75,18 @@ def detect_ver_peaks(epoch_avg: np.ndarray, epoch_time_ms: np.ndarray) -> VERPea
         Averaged epoch waveform (same length as epoch_time_ms)
     epoch_time_ms : np.ndarray
         Time axis in milliseconds (negative values = pre-stimulus)
+    classifier_cfg : dict, optional
+        Pre-loaded classifier settings dict.  When provided the module-level
+        cache is updated so that subsequent calls reuse the same values without
+        re-reading the JSON file.  Pass ``None`` (default) to use the cached
+        config or load it from disk on the first call.
 
     Returns
     -------
     dict with Peak-1/2/3 plus SNR flags, VER_detected and noise_rms
     """
+    cfg = _get_classifier_cfg(classifier_cfg)
+    snr_threshold = cfg.get("snr_threshold", 2.0)
     def _empty_peak() -> VERPeak:
         return {
             "latency_ms": float("nan"),
