@@ -118,5 +118,5 @@ def suggest_exclusion_from_file(
         total_epochs=suggested_stats.total_epochs,
         accepted_epochs=suggested_stats.accepted_epochs,
         rejected_epochs=suggested_stats.rejected_epochs,
-        peak_values_uv=peak_values.copy(),
+        peak_values_uv=peak_values,
     )

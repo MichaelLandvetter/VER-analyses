@@ -171,6 +171,12 @@ class ExclusionTuningDialog(QDialog):
     _MAX_HISTOGRAM_BINS = 24
     _HISTOGRAM_BIN_MULTIPLIER = 2
 
+    @staticmethod
+    def _clamp_threshold(threshold_uv: float) -> float:
+        """Clamp a candidate threshold to the minimum supported positive value."""
+
+        return max(float(threshold_uv), ARTIFACT_THRESHOLD_MIN_UV)
+
     def __init__(self, suggestion, current_threshold_uv: float, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Exclusion Tuning")
@@ -178,7 +184,7 @@ class ExclusionTuningDialog(QDialog):
 
         self.suggestion = suggestion
         raw_current_threshold_uv = float(current_threshold_uv)
-        self.current_threshold_uv = max(raw_current_threshold_uv, ARTIFACT_THRESHOLD_MIN_UV)
+        self.current_threshold_uv = self._clamp_threshold(raw_current_threshold_uv)
         if self.current_threshold_uv != raw_current_threshold_uv:
             log.debug(
                 "Clamped exclusion tuning threshold from %.6f to %.6f µV",
@@ -251,8 +257,9 @@ class ExclusionTuningDialog(QDialog):
     def _populate_histogram(self, peak_values: np.ndarray) -> None:
         """Render the histogram and add current/auto/selected threshold markers."""
 
-        # Clamp bins between 6 and 24 using a lightweight sqrt(n) * 2 heuristic so
-        # sparse files still show shape while very large files remain compact.
+        # Clamp bins between 6 and 24 using a lightweight sqrt(n) *
+        # _HISTOGRAM_BIN_MULTIPLIER heuristic so sparse files still show shape
+        # while very large files remain compact.
         bin_count = max(
             self._MIN_HISTOGRAM_BINS,
             min(
@@ -265,9 +272,9 @@ class ExclusionTuningDialog(QDialog):
         widths = np.diff(edges)
         if widths.size == 0:
             log.warning("Fell back to placeholder exclusion histogram bins for degenerate peak data.")
-            # Degenerate fallback for an unexpectedly empty histogram definition.
-            # Reuse the minimum threshold scale so the placeholder bar remains
-            # visible without overstating the distribution width.
+            # This should only happen if NumPy returns an unexpectedly empty bin
+            # definition; show a narrow placeholder bar so the dialog remains
+            # usable while making the anomaly visible in logs.
             widths = np.asarray([self.min_threshold_uv], dtype=float)
             centers = np.asarray([self.min_threshold_uv], dtype=float)
             counts = np.asarray([1], dtype=float)
@@ -1156,7 +1163,7 @@ class VERMainWindow(QMainWindow):
         """Apply, clamp, and persist the chosen artifact exclusion threshold."""
 
         raw_threshold = float(threshold_uv)
-        threshold = max(raw_threshold, ARTIFACT_THRESHOLD_MIN_UV)
+        threshold = ExclusionTuningDialog._clamp_threshold(raw_threshold)
         if threshold != raw_threshold:
             log.debug(
                 "Clamped applied exclusion threshold from %.6f to %.6f µV",
