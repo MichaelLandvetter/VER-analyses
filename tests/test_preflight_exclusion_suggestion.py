@@ -2,6 +2,10 @@ import numpy as np
 
 from ver_preflight import suggest_exclusion_from_file
 
+EXPECTED_MIN_THRESHOLD = 0.5
+EXPECTED_MAX_THRESHOLD = 1.0
+FLASHES_PER_SESSION_LIMIT = 9999
+
 
 class DummyFilter:
     def apply_zero_phase(self, epoch, baseline_mean=0.0):
@@ -30,7 +34,7 @@ def test_suggest_exclusion_uses_whole_file_epochs(tmp_path):
         epoch_config={
             "pre_stim_ms": 4,
             "post_stim_ms": 8,
-            "flashes_per_session": 9999,
+            "flashes_per_session": FLASHES_PER_SESSION_LIMIT,
             "num_sessions": 1,
             "artifact_rejection_enabled": True,
             "artifact_exclusion_uv": 0.01,
@@ -49,4 +53,4 @@ def test_suggest_exclusion_uses_whole_file_epochs(tmp_path):
     assert suggestion.total_epochs == 6
     assert suggestion.accepted_epochs == 4
     assert suggestion.rejected_epochs == 2
-    assert 0.5 < suggestion.suggested_threshold_uv < 1.0
+    assert EXPECTED_MIN_THRESHOLD < suggestion.suggested_threshold_uv < EXPECTED_MAX_THRESHOLD

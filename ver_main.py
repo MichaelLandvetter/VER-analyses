@@ -731,7 +731,7 @@ class VERMainWindow(QMainWindow):
             self,
             "Suggest Exclusion",
             (
-                f"Suggested exclusion threshold: ±{suggestion.suggested_threshold_uv:.4f}\n"
+                f"Suggested exclusion threshold: ±{suggestion.suggested_threshold_uv:.4f} µV\n"
                 f"Detected epochs (whole file): {suggestion.total_epochs}\n"
                 f"Estimated accepted epochs: {suggestion.accepted_epochs}\n"
                 f"Estimated rejected epochs: {suggestion.rejected_epochs}"

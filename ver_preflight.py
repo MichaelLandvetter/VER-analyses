@@ -11,6 +11,10 @@ from ver_config import FILE_CONFIG, FILTER_CONFIG
 from ver_filter import BandpassFilter
 from ver_scope import VERScopeProcessor
 
+MAD_TO_SIGMA = 1.4826  # Converts MAD to std-dev equivalent assuming normal distribution.
+ROBUST_SIGMA_MULTIPLIER = 3.0
+MIN_THRESHOLD_UV = 1e-6
+
 
 @dataclass(frozen=True)
 class ExclusionSuggestion:
@@ -20,21 +24,21 @@ class ExclusionSuggestion:
     rejected_epochs: int
 
 
-def _suggest_threshold_from_peaks(epoch_peak_abs: np.ndarray) -> float:
-    peak_values = np.asarray(epoch_peak_abs, dtype=float)
+def _suggest_threshold_from_peaks(peak_values: np.ndarray) -> float:
     if peak_values.size == 0:
-        raise ValueError("No complete epochs were detected in the selected file.")
+        raise ValueError("No complete epochs were detected. Verify trigger settings and file format.")
 
     median_peak = float(np.median(peak_values))
     mad = float(np.median(np.abs(peak_values - median_peak)))
-    robust_sigma = 1.4826 * mad
+    robust_sigma = MAD_TO_SIGMA * mad
 
     if robust_sigma <= 0:
         robust_sigma = float(np.std(peak_values))
 
-    suggested = median_peak + (3.0 * robust_sigma)
-    if suggested <= 0:
-        suggested = max(median_peak, 1e-6)
+    # Suggest threshold at median peak plus 3 robust standard deviations.
+    suggested = median_peak + (ROBUST_SIGMA_MULTIPLIER * robust_sigma)
+    if suggested < MIN_THRESHOLD_UV:
+        suggested = max(median_peak, MIN_THRESHOLD_UV)
     return float(suggested)
 
 
@@ -59,20 +63,13 @@ def suggest_exclusion_from_file(
     )
 
     scope = VERScopeProcessor(scope_filter, epoch_config=epoch_config)
-    simulator = FileAcquisitionSimulator(file_path, speed_factor=None)
+    simulator = FileAcquisitionSimulator(file_path, speed_factor=None, file_config=active_file_config)
     epoch_peak_abs: list[float] = []
 
-    original_file_config = dict(FILE_CONFIG)
-    FILE_CONFIG.clear()
-    FILE_CONFIG.update(active_file_config)
-    try:
-        for sample in simulator.stream_samples():
-            result = scope.process_sample(bool(sample[0]), float(sample[1]))
-            if result["epoch_complete"] and result["completed_epoch"] is not None:
-                epoch_peak_abs.append(float(np.max(np.abs(result["completed_epoch"]))))
-    finally:
-        FILE_CONFIG.clear()
-        FILE_CONFIG.update(original_file_config)
+    for sample in simulator.stream_samples():
+        result = scope.process_sample(bool(sample[0]), float(sample[1]))
+        if result["epoch_complete"] and result["completed_epoch"] is not None:
+            epoch_peak_abs.append(float(np.max(np.abs(result["completed_epoch"]))))
 
     peak_values = np.asarray(epoch_peak_abs, dtype=float)
     suggested_threshold = _suggest_threshold_from_peaks(peak_values)
