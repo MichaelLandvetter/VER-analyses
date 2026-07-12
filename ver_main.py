@@ -526,7 +526,7 @@ class VERMainWindow(QMainWindow):
         main_layout = QVBoxLayout(self.main_tab)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(self.display)
-        self.tabs.addTab(self.main_tab, "Analysis Scope")
+        self.tabs.addTab(self.main_tab, "Analysis View")
 
         # 3. Create the Settings Tab as Tab 2
         self.settings_tab = QWidget()
@@ -583,11 +583,11 @@ class VERMainWindow(QMainWindow):
         self.save_settings_btn.clicked.connect(self._save_user_settings)
         settings_layout.addRow(self.save_settings_btn)
 
-        self.tabs.addTab(self.settings_tab, "Settings")
+        self.tabs.addTab(self.settings_tab, "Analysis Settings")
         
         # -- 4. ADD THE NEW CLASSIFIER TAB (This creates the 3rd Tab) --
         self.classifier_tab = ClassifierSettingsTab(self.settings_manager)
-        self.tabs.addTab(self.classifier_tab, "Classifier Settings")
+        self.tabs.addTab(self.classifier_tab, "VER Classifier Settings")
         
         self.setCentralWidget(central)
         
@@ -857,6 +857,10 @@ class VERMainWindow(QMainWindow):
 
         if self.worker is not None:
             self.worker.start_stream()
+
+        # Auto-switch to the live analysis tab (index 0) so the user sees
+        # the ongoing analysis without needing to switch tabs manually.
+        self.tabs.setCurrentIndex(0)
 
     
     def stop_acquisition(self):
