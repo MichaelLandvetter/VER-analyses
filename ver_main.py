@@ -165,22 +165,24 @@ class DownsampleDialog(QDialog):
 
 
 class ExclusionTuningDialog(QDialog):
-    """Compact pre-analysis dialog for visual artifact-threshold tuning.
+    """Pre-analysis dialog for visual artifact-threshold tuning via signal plot.
 
-    Accepts a whole-file preflight suggestion plus the current/manual threshold,
-    renders the epoch-metric histogram, and lets the user compare and apply a
-    symmetric ±threshold before running analysis.
+    Shows the whole-file downsampled filtered signal as the primary selection
+    surface.  Two linked draggable horizontal lines (±T) let the user set the
+    symmetric threshold directly on the signal trace — mirroring the current
+    clinical workflow of visually inspecting the signal and deciding the cutoff.
+
+    Slider/spinbox remain for fine-grained numeric control and are kept in sync
+    with the draggable markers.  Live acceptance/rejection statistics update as
+    the threshold changes.
     """
 
     _THRESHOLD_SCALE = 10000
-    _MIN_HISTOGRAM_BINS = 6
-    _MAX_HISTOGRAM_BINS = 24
-    _HISTOGRAM_BIN_MULTIPLIER = 2
 
     def __init__(self, suggestion, current_threshold_uv: float, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Exclusion Tuning")
-        self.resize(760, 520)
+        self.resize(860, 560)
 
         self.suggestion = suggestion
         raw_current_threshold_uv = float(current_threshold_uv)
@@ -202,18 +204,18 @@ class ExclusionTuningDialog(QDialog):
 
         layout = QVBoxLayout(self)
         metric_label = QLabel(
-            "Whole-file histogram of max absolute amplitude per detected filtered epoch."
+            "Filtered signal preview — drag the ±T lines vertically to set the exclusion threshold."
         )
         metric_label.setWordWrap(True)
         layout.addWidget(metric_label)
 
-        self.hist_plot = pg.PlotWidget()
-        self.hist_plot.setBackground("k")
-        self.hist_plot.showGrid(x=True, y=True, alpha=0.2)
-        self.hist_plot.setLabel("bottom", "Max |epoch amplitude|", "µV")
-        self.hist_plot.setLabel("left", "Epoch count")
-        layout.addWidget(self.hist_plot, stretch=1)
-        self._populate_histogram(peak_values)
+        self.signal_plot = pg.PlotWidget()
+        self.signal_plot.setBackground("k")
+        self.signal_plot.showGrid(x=True, y=True, alpha=0.2)
+        self.signal_plot.setLabel("bottom", "Time", "s")
+        self.signal_plot.setLabel("left", "Amplitude", "µV")
+        layout.addWidget(self.signal_plot, stretch=1)
+        self._populate_signal_plot(peak_values)
 
         controls_layout = QHBoxLayout()
         controls_layout.addWidget(QLabel("Threshold (±µV):"))
@@ -253,74 +255,110 @@ class ExclusionTuningDialog(QDialog):
         self.threshold_spin.valueChanged.connect(self._on_spin_changed)
         self._set_threshold(self.current_threshold_uv)
 
-    def _populate_histogram(self, peak_values: np.ndarray) -> None:
-        """Render the histogram and add current/auto/selected threshold markers."""
+    def _populate_signal_plot(self, peak_values: np.ndarray) -> None:
+        """Render the filtered signal trace and add threshold/reference markers."""
 
-        # Clamp bins between 6 and 24 using a lightweight sqrt(n) *
-        # _HISTOGRAM_BIN_MULTIPLIER heuristic so sparse files still show shape
-        # while very large files remain compact.
-        bin_count = max(
-            self._MIN_HISTOGRAM_BINS,
-            min(
-                self._MAX_HISTOGRAM_BINS,
-                int(np.sqrt(max(1, peak_values.size))) * self._HISTOGRAM_BIN_MULTIPLIER,
-            ),
-        )
-        counts, edges = np.histogram(peak_values, bins=bin_count)
-        centers = (edges[:-1] + edges[1:]) / 2.0
-        widths = np.diff(edges)
-        if widths.size == 0:
-            log.warning(
-                "Fell back to placeholder exclusion histogram bins because the peak values "
-                "array produced an empty or invalid bin definition."
+        filtered_signal = np.asarray(self.suggestion.filtered_signal_uv, dtype=float)
+        sample_rate = float(self.suggestion.signal_sample_rate)
+
+        if filtered_signal.size > 0 and sample_rate > 0:
+            time_s = np.arange(filtered_signal.size, dtype=float) / sample_rate
+            self.signal_plot.plot(
+                time_s,
+                filtered_signal,
+                pen=pg.mkPen((0, 200, 120), width=1),
+                autoDownsample=True,
+                downsampleMethod="mean",
+                clipToView=True,
             )
-            # This should only happen if NumPy returns an unexpectedly empty bin
-            # definition; anchor the placeholder bar at the median peak (when
-            # available) and keep it narrow so the dialog remains usable while
-            # making the anomaly visible in logs.
-            fallback_center = max(
-                float(np.median(peak_values)) if peak_values.size else 0.0,
-                ARTIFACT_THRESHOLD_MIN_UV,
+        else:
+            # No signal data available — show a placeholder message.
+            text = pg.TextItem(
+                "No signal data available.\nRe-open the file to generate the preview.",
+                color=(200, 200, 200),
+                anchor=(0.5, 0.5),
             )
-            widths = np.asarray([ARTIFACT_THRESHOLD_MIN_UV], dtype=float)
-            centers = np.asarray([fallback_center], dtype=float)
-            counts = np.asarray([1], dtype=float)
-        bars = pg.BarGraphItem(
-            x=centers,
-            height=counts,
-            width=widths * 0.9,
-            brush=pg.mkBrush(80, 160, 220, 180),
-            pen=pg.mkPen(160, 220, 255, width=1),
-        )
-        self.hist_plot.addItem(bars)
+            self.signal_plot.addItem(text)
+            text.setPos(0.5, 0.5)
 
-        self.current_line = pg.InfiniteLine(
-            pos=self.current_threshold_uv,
-            angle=90,
-            pen=pg.mkPen((180, 180, 180), width=2, style=Qt.PenStyle.DashLine),
-            label="Current",
-            labelOpts={"position": 0.9, "color": "#dddddd", "fill": (0, 0, 0, 160)},
+        suggested = float(self.suggestion.suggested_threshold_uv)
+        # Reference line: auto-suggested threshold (+)
+        self.signal_plot.addItem(
+            pg.InfiniteLine(
+                pos=suggested,
+                angle=0,
+                pen=pg.mkPen((0, 170, 255), width=1, style=Qt.PenStyle.DashLine),
+                label="Auto +T",
+                labelOpts={"position": 0.02, "color": "#66ccff", "fill": (0, 0, 0, 160)},
+            )
         )
-        self.suggested_line = pg.InfiniteLine(
-            pos=float(self.suggestion.suggested_threshold_uv),
-            angle=90,
-            pen=pg.mkPen((0, 170, 255), width=2, style=Qt.PenStyle.DashLine),
-            label="Auto",
-            labelOpts={"position": 0.82, "color": "#66ccff", "fill": (0, 0, 0, 160)},
+        # Reference line: auto-suggested threshold (-)
+        self.signal_plot.addItem(
+            pg.InfiniteLine(
+                pos=-suggested,
+                angle=0,
+                pen=pg.mkPen((0, 170, 255), width=1, style=Qt.PenStyle.DashLine),
+                label="Auto −T",
+                labelOpts={"position": 0.98, "color": "#66ccff", "fill": (0, 0, 0, 160)},
+            )
         )
-        self.selected_line = pg.InfiniteLine(
-            pos=self.current_threshold_uv,
-            angle=90,
-            pen=pg.mkPen((255, 190, 0), width=3),
-            label="Selected",
-            labelOpts={"position": 0.74, "color": "#ffcc55", "fill": (0, 0, 0, 160)},
+        # Reference line: current configured threshold (+)
+        self.signal_plot.addItem(
+            pg.InfiniteLine(
+                pos=self.current_threshold_uv,
+                angle=0,
+                pen=pg.mkPen((180, 180, 180), width=1, style=Qt.PenStyle.DashLine),
+                label="Current +T",
+                labelOpts={"position": 0.10, "color": "#dddddd", "fill": (0, 0, 0, 160)},
+            )
         )
-        self.hist_plot.addItem(self.current_line)
-        self.hist_plot.addItem(self.suggested_line)
-        self.hist_plot.addItem(self.selected_line)
+        # Reference line: current configured threshold (-)
+        self.signal_plot.addItem(
+            pg.InfiniteLine(
+                pos=-self.current_threshold_uv,
+                angle=0,
+                pen=pg.mkPen((180, 180, 180), width=1, style=Qt.PenStyle.DashLine),
+                label="Current −T",
+                labelOpts={"position": 0.90, "color": "#dddddd", "fill": (0, 0, 0, 160)},
+            )
+        )
 
-        right_edge = max(self.max_threshold_uv, float(edges[-1]) if edges.size else self.max_threshold_uv)
-        self.hist_plot.setXRange(0.0, right_edge * 1.05, padding=0)
+        # Draggable selected-threshold lines.
+        self.pos_threshold_line = pg.InfiniteLine(
+            pos=self.current_threshold_uv,
+            angle=0,
+            pen=pg.mkPen((255, 190, 0), width=2),
+            movable=True,
+            label="Selected +T",
+            labelOpts={"position": 0.05, "color": "#ffcc55", "fill": (0, 0, 0, 180)},
+            bounds=[ARTIFACT_THRESHOLD_MIN_UV, self.max_threshold_uv],
+        )
+        self.neg_threshold_line = pg.InfiniteLine(
+            pos=-self.current_threshold_uv,
+            angle=0,
+            pen=pg.mkPen((255, 190, 0), width=2),
+            movable=True,
+            label="Selected −T",
+            labelOpts={"position": 0.95, "color": "#ffcc55", "fill": (0, 0, 0, 180)},
+            bounds=[-self.max_threshold_uv, -ARTIFACT_THRESHOLD_MIN_UV],
+        )
+        self.signal_plot.addItem(self.pos_threshold_line)
+        self.signal_plot.addItem(self.neg_threshold_line)
+
+        self.pos_threshold_line.sigPositionChanged.connect(self._on_pos_line_dragged)
+        self.neg_threshold_line.sigPositionChanged.connect(self._on_neg_line_dragged)
+
+    def _on_pos_line_dragged(self) -> None:
+        if self._syncing_threshold:
+            return
+        new_pos = float(self.pos_threshold_line.value())
+        self._set_threshold(abs(new_pos))
+
+    def _on_neg_line_dragged(self) -> None:
+        if self._syncing_threshold:
+            return
+        new_pos = float(self.neg_threshold_line.value())
+        self._set_threshold(abs(new_pos))
 
     def _threshold_from_slider(self, slider_value: int) -> float:
         """Convert the integer slider position to a threshold in microvolts."""
@@ -333,7 +371,7 @@ class ExclusionTuningDialog(QDialog):
         return int(round(max(ARTIFACT_THRESHOLD_MIN_UV, threshold_uv) * self._THRESHOLD_SCALE))
 
     def _set_threshold(self, threshold_uv: float) -> None:
-        """Synchronize the slider, spin box, indicator line, and live stats."""
+        """Synchronize the slider, spin box, draggable lines, and live stats."""
 
         threshold = min(_clamp_artifact_threshold(threshold_uv), self.max_threshold_uv)
         if self._syncing_threshold:
@@ -342,7 +380,8 @@ class ExclusionTuningDialog(QDialog):
         try:
             self.threshold_spin.setValue(threshold)
             self.threshold_slider.setValue(self._slider_from_threshold(threshold))
-            self.selected_line.setValue(threshold)
+            self.pos_threshold_line.setValue(threshold)
+            self.neg_threshold_line.setValue(-threshold)
             self._update_stats(threshold)
         finally:
             self._syncing_threshold = False
