@@ -160,6 +160,13 @@ class DownsampleDialog(QDialog):
 
 
 class ExclusionTuningDialog(QDialog):
+    """Compact pre-analysis dialog for visual artifact-threshold tuning.
+
+    Accepts a whole-file preflight suggestion plus the current/manual threshold,
+    renders the epoch-metric histogram, and lets the user compare and apply a
+    symmetric ±threshold before running analysis.
+    """
+
     _THRESHOLD_SCALE = 10000
     _MIN_HISTOGRAM_BINS = 6
     _MAX_HISTOGRAM_BINS = 24
@@ -243,6 +250,8 @@ class ExclusionTuningDialog(QDialog):
         self._set_threshold(self.current_threshold_uv)
 
     def _populate_histogram(self, peak_values: np.ndarray) -> None:
+        """Render the histogram and add current/auto/selected threshold markers."""
+
         # Clamp bins between 6 and 24 using a lightweight sqrt(n) * 2 heuristic so
         # sparse files still show shape while very large files remain compact.
         bin_count = max(
@@ -300,12 +309,18 @@ class ExclusionTuningDialog(QDialog):
         self.hist_plot.setXRange(0.0, right_edge * 1.05, padding=0)
 
     def _threshold_from_slider(self, slider_value: int) -> float:
+        """Convert the integer slider position to a threshold in microvolts."""
+
         return max(self.min_threshold_uv, slider_value / self._THRESHOLD_SCALE)
 
     def _slider_from_threshold(self, threshold_uv: float) -> int:
+        """Convert a threshold in microvolts to the matching slider position."""
+
         return int(round(max(self.min_threshold_uv, threshold_uv) * self._THRESHOLD_SCALE))
 
     def _set_threshold(self, threshold_uv: float) -> None:
+        """Synchronize the slider, spin box, indicator line, and live stats."""
+
         threshold = min(max(float(threshold_uv), self.min_threshold_uv), self.max_threshold_uv)
         if self._syncing_threshold:
             return
@@ -329,6 +344,8 @@ class ExclusionTuningDialog(QDialog):
         self._set_threshold(threshold_uv)
 
     def _update_stats(self, threshold_uv: float) -> None:
+        """Refresh the threshold summary and whole-file accept/reject estimates."""
+
         stats = self.suggestion.stats_for_threshold(threshold_uv)
         self.value_label.setText(
             f"Selected threshold: <b>±{threshold_uv:.4f} µV</b> "
@@ -344,6 +361,8 @@ class ExclusionTuningDialog(QDialog):
         )
 
     def selected_threshold_uv(self) -> float:
+        """Return the threshold currently chosen by the user in the dialog."""
+
         return float(self.threshold_spin.value())
 
 
@@ -1136,6 +1155,8 @@ class VERMainWindow(QMainWindow):
             self.scope.config["artifact_exclusion_uv"] = artifact_threshold
 
     def _apply_exclusion_threshold(self, threshold_uv: float) -> None:
+        """Apply, clamp, and persist the chosen artifact exclusion threshold."""
+
         raw_threshold = float(threshold_uv)
         threshold = max(raw_threshold, ARTIFACT_THRESHOLD_MIN_UV)
         if threshold != raw_threshold:
