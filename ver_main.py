@@ -270,7 +270,10 @@ class ExclusionTuningDialog(QDialog):
         centers = (edges[:-1] + edges[1:]) / 2.0
         widths = np.diff(edges)
         if widths.size == 0:
-            log.warning("Fell back to placeholder exclusion histogram bins for degenerate peak data.")
+            log.warning(
+                "Fell back to placeholder exclusion histogram bins because the peak values "
+                "array produced an empty or invalid bin definition."
+            )
             # This should only happen if NumPy returns an unexpectedly empty bin
             # definition; anchor the placeholder bar at the median peak (when
             # available) and keep it narrow so the dialog remains usable while
@@ -364,11 +367,9 @@ class ExclusionTuningDialog(QDialog):
             f"current: ±{self.current_threshold_uv:.4f} µV)"
         )
         self.stats_label.setText(
-            "Detected epochs (whole file): "
-            f"{stats.total_epochs}    "
-            f"Estimated rejected epochs: {stats.rejected_epochs} of {stats.total_epochs}    "
-            f"Estimated accepted epochs: {stats.accepted_epochs} of {stats.total_epochs}    "
-            f"Estimated reject percentage: {stats.rejected_percent:.1f}%"
+            f"Detected epochs: {stats.total_epochs}    "
+            f"Accepted: {stats.accepted_epochs}    "
+            f"Rejected: {stats.rejected_epochs} ({stats.rejected_percent:.1f}%)"
         )
 
     def selected_threshold_uv(self) -> float:

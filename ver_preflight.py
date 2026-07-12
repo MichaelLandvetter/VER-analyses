@@ -14,10 +14,11 @@ from ver_scope import VERScopeProcessor
 MAD_TO_SIGMA = 1.4826  # Converts MAD to std-dev equivalent assuming normal distribution.
 ROBUST_SIGMA_MULTIPLIER = 3.0
 MIN_THRESHOLD_UV = 1e-6
+MIN_SELECTABLE_THRESHOLD_UV = 1e-4
 
 
 def _build_threshold_stats(peak_values: np.ndarray, threshold_uv: float) -> ExclusionThresholdStats:
-    threshold = max(float(threshold_uv), 0.0)
+    threshold = max(float(threshold_uv), MIN_SELECTABLE_THRESHOLD_UV)
     rejected = int(np.count_nonzero(peak_values > threshold))
     total = int(peak_values.size)
     accepted = total - rejected
