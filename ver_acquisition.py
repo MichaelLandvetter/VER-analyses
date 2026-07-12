@@ -15,11 +15,20 @@ from ver_config import ACQ_CONFIG, FILE_CONFIG, SERIAL_CONFIG
 class FileAcquisitionSimulator:
     """Replay a raw text file sample-by-sample."""
 
-    def __init__(self, file_path: str, sample_rate: Optional[float] = None, speed_factor: Optional[float] = 1.0):
+    def __init__(
+        self,
+        file_path: str,
+        sample_rate: Optional[float] = None,
+        speed_factor: Optional[float] = 1.0,
+        file_config: Optional[dict] = None,
+    ):
         self.file_path = Path(file_path)
         self.sample_rate = sample_rate if sample_rate is not None else ACQ_CONFIG["sample_rate"]
         # speed_factor=1.0 → real-time, 10.0 → 10× faster, None → maximum speed (no sleep)
         self.speed_factor = speed_factor
+        self.file_config = dict(FILE_CONFIG)
+        if file_config:
+            self.file_config.update(file_config)
 
     def _open(self) -> None:
         """Dummy open method so the background worker doesn't crash."""
@@ -35,8 +44,8 @@ class FileAcquisitionSimulator:
 
         data = np.loadtxt(
             str(self.file_path),
-            delimiter=FILE_CONFIG["delimiter"],
-            skiprows=FILE_CONFIG["skip_header"],
+            delimiter=self.file_config["delimiter"],
+            skiprows=self.file_config["skip_header"],
             dtype=float,
         )
 
@@ -44,10 +53,10 @@ class FileAcquisitionSimulator:
             data = data.reshape(1, -1)
 
         base_sleep = 1.0 / float(self.sample_rate)
-        trigger_column = int(FILE_CONFIG["trigger_column"])
-        eeg_column = int(FILE_CONFIG["eeg_column"])
-        trigger_mode = FILE_CONFIG.get("trigger_mode", "level")
-        trigger_threshold = float(FILE_CONFIG.get("trigger_threshold", 0.5))
+        trigger_column = int(self.file_config["trigger_column"])
+        eeg_column = int(self.file_config["eeg_column"])
+        trigger_mode = self.file_config.get("trigger_mode", "level")
+        trigger_threshold = float(self.file_config.get("trigger_threshold", 0.5))
 
         next_yield_time = time.perf_counter()
 
