@@ -60,6 +60,12 @@ from ver_preflight import suggest_exclusion_from_file
 log = logging.getLogger(__name__)
 ARTIFACT_THRESHOLD_MIN_UV = 0.0001
 
+
+def _clamp_artifact_threshold(threshold_uv: float) -> float:
+    """Clamp a candidate threshold to the minimum supported positive value."""
+
+    return max(float(threshold_uv), ARTIFACT_THRESHOLD_MIN_UV)
+
 def auto_detect_file_format(filepath: str) -> str | None:
     """
     Reads the first data line of the file and determines the format.
@@ -171,12 +177,6 @@ class ExclusionTuningDialog(QDialog):
     _MAX_HISTOGRAM_BINS = 24
     _HISTOGRAM_BIN_MULTIPLIER = 2
 
-    @staticmethod
-    def _clamp_threshold(threshold_uv: float) -> float:
-        """Clamp a candidate threshold to the minimum supported positive value."""
-
-        return max(float(threshold_uv), ARTIFACT_THRESHOLD_MIN_UV)
-
     def __init__(self, suggestion, current_threshold_uv: float, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Exclusion Tuning")
@@ -184,7 +184,7 @@ class ExclusionTuningDialog(QDialog):
 
         self.suggestion = suggestion
         raw_current_threshold_uv = float(current_threshold_uv)
-        self.current_threshold_uv = self._clamp_threshold(raw_current_threshold_uv)
+        self.current_threshold_uv = _clamp_artifact_threshold(raw_current_threshold_uv)
         if self.current_threshold_uv != raw_current_threshold_uv:
             log.debug(
                 "Clamped exclusion tuning threshold from %.6f to %.6f µV",
@@ -193,9 +193,8 @@ class ExclusionTuningDialog(QDialog):
             )
         peak_values = np.asarray(self.suggestion.peak_values_uv, dtype=float)
         peak_max = float(np.max(peak_values)) if peak_values.size else self.current_threshold_uv
-        self.min_threshold_uv = ARTIFACT_THRESHOLD_MIN_UV
         self.max_threshold_uv = max(
-            self.min_threshold_uv * 2,
+            ARTIFACT_THRESHOLD_MIN_UV * 2,
             peak_max * 1.1,
             float(self.suggestion.suggested_threshold_uv) * 1.2,
             self.current_threshold_uv * 1.2,
@@ -221,16 +220,16 @@ class ExclusionTuningDialog(QDialog):
 
         self.threshold_slider = QSlider(Qt.Orientation.Horizontal)
         self.threshold_slider.setRange(
-            int(round(self.min_threshold_uv * self._THRESHOLD_SCALE)),
+            int(round(ARTIFACT_THRESHOLD_MIN_UV * self._THRESHOLD_SCALE)),
             max(
-                int(round(self.min_threshold_uv * self._THRESHOLD_SCALE)),
+                int(round(ARTIFACT_THRESHOLD_MIN_UV * self._THRESHOLD_SCALE)),
                 int(round(self.max_threshold_uv * self._THRESHOLD_SCALE)),
             ),
         )
         controls_layout.addWidget(self.threshold_slider, stretch=1)
 
         self.threshold_spin = QDoubleSpinBox()
-        self.threshold_spin.setRange(self.min_threshold_uv, self.max_threshold_uv)
+        self.threshold_spin.setRange(ARTIFACT_THRESHOLD_MIN_UV, self.max_threshold_uv)
         self.threshold_spin.setDecimals(4)
         self.threshold_spin.setSingleStep(0.0005)
         controls_layout.addWidget(self.threshold_spin)
@@ -273,10 +272,15 @@ class ExclusionTuningDialog(QDialog):
         if widths.size == 0:
             log.warning("Fell back to placeholder exclusion histogram bins for degenerate peak data.")
             # This should only happen if NumPy returns an unexpectedly empty bin
-            # definition; show a narrow placeholder bar so the dialog remains
-            # usable while making the anomaly visible in logs.
-            widths = np.asarray([self.min_threshold_uv], dtype=float)
-            centers = np.asarray([self.min_threshold_uv], dtype=float)
+            # definition; anchor the placeholder bar at the median peak (when
+            # available) and keep it narrow so the dialog remains usable while
+            # making the anomaly visible in logs.
+            fallback_center = max(
+                float(np.median(peak_values)) if peak_values.size else 0.0,
+                ARTIFACT_THRESHOLD_MIN_UV,
+            )
+            widths = np.asarray([ARTIFACT_THRESHOLD_MIN_UV], dtype=float)
+            centers = np.asarray([fallback_center], dtype=float)
             counts = np.asarray([1], dtype=float)
         bars = pg.BarGraphItem(
             x=centers,
@@ -318,17 +322,17 @@ class ExclusionTuningDialog(QDialog):
     def _threshold_from_slider(self, slider_value: int) -> float:
         """Convert the integer slider position to a threshold in microvolts."""
 
-        return max(self.min_threshold_uv, slider_value / self._THRESHOLD_SCALE)
+        return max(ARTIFACT_THRESHOLD_MIN_UV, slider_value / self._THRESHOLD_SCALE)
 
     def _slider_from_threshold(self, threshold_uv: float) -> int:
         """Convert a threshold in microvolts to the matching slider position."""
 
-        return int(round(max(self.min_threshold_uv, threshold_uv) * self._THRESHOLD_SCALE))
+        return int(round(max(ARTIFACT_THRESHOLD_MIN_UV, threshold_uv) * self._THRESHOLD_SCALE))
 
     def _set_threshold(self, threshold_uv: float) -> None:
         """Synchronize the slider, spin box, indicator line, and live stats."""
 
-        threshold = min(max(float(threshold_uv), self.min_threshold_uv), self.max_threshold_uv)
+        threshold = min(_clamp_artifact_threshold(threshold_uv), self.max_threshold_uv)
         if self._syncing_threshold:
             return
         self._syncing_threshold = True
@@ -1163,7 +1167,7 @@ class VERMainWindow(QMainWindow):
         """Apply, clamp, and persist the chosen artifact exclusion threshold."""
 
         raw_threshold = float(threshold_uv)
-        threshold = ExclusionTuningDialog._clamp_threshold(raw_threshold)
+        threshold = _clamp_artifact_threshold(raw_threshold)
         if threshold != raw_threshold:
             log.debug(
                 "Clamped applied exclusion threshold from %.6f to %.6f µV",
