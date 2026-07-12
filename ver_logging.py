@@ -37,7 +37,11 @@ _BACKUP_COUNT = 3               # keep up to 3 rotated files
 def _resolve_log_dir() -> Path:
     """Return a writable directory for log files."""
     # Next to the EXE / script is the preferred location.
-    candidate = Path(sys.executable).parent / "logs" if getattr(sys, "frozen", False) else Path(__file__).parent / "logs"
+    if getattr(sys, "frozen", False):
+        candidate = Path(sys.executable).parent / "logs"
+    else:
+        candidate = Path(__file__).parent / "logs"
+
     try:
         candidate.mkdir(parents=True, exist_ok=True)
         # Quick write-permission probe.

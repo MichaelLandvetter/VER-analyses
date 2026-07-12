@@ -288,8 +288,8 @@ class ClassifierSettingsTab(QWidget):
         # Refresh module-level caches so the new config takes effect immediately.
         import ver_classifier
         import ver_peaks
-        ver_classifier._get_classifier_cfg(self.cfg)
-        ver_peaks._get_classifier_cfg(self.cfg)
+        ver_classifier.refresh_classifier_cfg(self.cfg)
+        ver_peaks.refresh_classifier_cfg(self.cfg)
 
         QMessageBox.information(
             self,
@@ -932,8 +932,8 @@ class VERMainWindow(QMainWindow):
         new_classifier_cfg = new_settings.get("CLASSIFIER_CONFIG", {})
         import ver_classifier
         import ver_peaks
-        ver_classifier._get_classifier_cfg(new_classifier_cfg)
-        ver_peaks._get_classifier_cfg(new_classifier_cfg)
+        ver_classifier.refresh_classifier_cfg(new_classifier_cfg)
+        ver_peaks.refresh_classifier_cfg(new_classifier_cfg)
         
         QMessageBox.information(self, "Settings Saved", "Settings saved successfully! \n\n You may need to click 'Reset' or analyze a new file for changes to take effect.")
 

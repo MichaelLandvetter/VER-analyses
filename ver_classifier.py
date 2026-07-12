@@ -29,6 +29,15 @@ def _get_classifier_cfg(override: dict | None) -> dict:
     return _cached_classifier_cfg
 
 
+def refresh_classifier_cfg(cfg: dict) -> None:
+    """Push an updated classifier config dict into the module cache.
+
+    Call this after the user saves settings in the GUI so that subsequent
+    ``evaluate_ver_peak`` calls use the new values without restarting.
+    """
+    _get_classifier_cfg(cfg)
+
+
 def evaluate_ver_peak(
     peak_scale: float,
     peak_power: float,

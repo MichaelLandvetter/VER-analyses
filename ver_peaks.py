@@ -37,6 +37,15 @@ def _get_classifier_cfg(override: dict | None) -> dict:
     return _cached_classifier_cfg
 
 
+def refresh_classifier_cfg(cfg: dict) -> None:
+    """Push an updated classifier config dict into the module cache.
+
+    Call this after the user saves settings in the GUI so that subsequent
+    ``detect_ver_peaks`` calls use the new values without restarting.
+    """
+    _get_classifier_cfg(cfg)
+
+
 class VERPeak(TypedDict):
     latency_ms: float   # time in ms where peak occurs
     amplitude: float    # amplitude value at the peak
