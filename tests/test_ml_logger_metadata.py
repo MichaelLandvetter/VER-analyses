@@ -51,3 +51,18 @@ def test_settings_manager_default_metadata_config(monkeypatch, tmp_path):
     manager = SettingsManager()
     assert manager.default_settings["METADATA_CONFIG"]["species"] == ""
     assert manager.settings["METADATA_CONFIG"]["species"] == ""
+
+
+def test_ver_main_source_moves_species_selector_into_data_file_group():
+    src = (REPO_ROOT / "ver_main.py").read_text(encoding="utf-8")
+
+    assert 'self.file_species_combo = QComboBox()' in src
+    assert 'self.file_species_combo.addItem("(not set)")' in src
+    assert 'self.file_species_combo.addItems(self._species_options())' in src
+    assert 'species_layout.addWidget(QLabel("Species:"))' in src
+    assert "layout2.addLayout(species_layout)" in src
+    assert "self.set_species" not in src
+    assert 'settings_layout.addRow(QLabel("<b>ML Metadata</b>"))' not in src
+    assert 'return "" if species_value == "(not set)" else species_value' in src
+    assert 'new_settings["METADATA_CONFIG"]["species"] = self._selected_species_value()' in src
+    assert "species=self._selected_species_value()," in src
