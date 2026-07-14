@@ -589,6 +589,39 @@ class VERMainWindow(QMainWindow):
         self._sync_artifact_settings_from_ui()
         self._build_menu()
 
+    def _species_options(self) -> list[str]:
+        """Return the runtime species choices exposed by ver_config."""
+
+        if isinstance(SPECIES, dict):
+            species_values = SPECIES.values()
+        elif SPECIES is None:
+            return []
+        elif isinstance(SPECIES, str):
+            species_values = [SPECIES]
+        else:
+            try:
+                species_values = list(SPECIES)
+            except TypeError:
+                log.warning("Unexpected SPECIES configuration %r; using its string form.", SPECIES)
+                species_values = [str(SPECIES)]
+        return sorted(str(species).strip() for species in species_values if str(species).strip())
+
+    def _set_species_selection(self, species_value: str) -> None:
+        """Restore the Box 2 species choice, tolerating untrimmed input and missing values."""
+
+        if not hasattr(self, "file_species_combo"):
+            return
+        species_idx = self.file_species_combo.findText(species_value.strip())
+        self.file_species_combo.setCurrentIndex(species_idx if species_idx >= 0 else 0)
+
+    def _selected_species_value(self) -> str:
+        """Return the Box 2 species selection, even if called before the combo is built."""
+
+        if not hasattr(self, "file_species_combo"):
+            return ""
+        species_value = self.file_species_combo.currentText().strip()
+        return "" if species_value == "(not set)" else species_value
+
     def _launch_usb_test(self):
         """Launches the dedicated USB test program directly within the application."""
         # Import the GUI class from your USB test file
@@ -651,6 +684,11 @@ class VERMainWindow(QMainWindow):
         self.format_combo = QComboBox()
         self.format_combo.addItems(list(FILE_FORMATS.keys()))
         self.format_combo.currentTextChanged.connect(self._on_format_changed)
+        self.file_species_combo = QComboBox()
+        self.file_species_combo.addItem("(not set)")
+        self.file_species_combo.addItems(self._species_options())
+        saved_species = self.settings_manager.settings.get("METADATA_CONFIG", {}).get("species", "").strip()
+        self._set_species_selection(saved_species)
 
         # --- Filter Widgets ---
         self.low_spin = QSpinBox()
@@ -726,12 +764,16 @@ class VERMainWindow(QMainWindow):
         # 2. DATA FILE GROUP
         group2 = QGroupBox("2. Data File")
         layout2 = QVBoxLayout() 
+        species_layout = QHBoxLayout()
+        species_layout.addWidget(QLabel("Species:"))
+        species_layout.addWidget(self.file_species_combo)
         file_controls_layout = QHBoxLayout()
         file_controls_layout.addWidget(open_btn)
         file_controls_layout.addWidget(self.suggest_exclusion_btn)
         file_controls_layout.addWidget(QLabel("Format:"))
         file_controls_layout.addWidget(self.format_combo)
         layout2.addWidget(self.file_label)
+        layout2.addLayout(species_layout)
         layout2.addLayout(file_controls_layout)
         group2.setLayout(layout2)
         top_bar.addWidget(group2)
@@ -836,14 +878,6 @@ class VERMainWindow(QMainWindow):
         self.set_wav_cf.setSingleStep(0.1)
         self.set_wav_cf.setValue(float(self.settings_manager.settings["WAVELET_CONFIG"].get("center_freq", 2.0)))
 
-        # -- Metadata settings --
-        self.set_species = QComboBox()
-        self.set_species.addItem("")
-        self.set_species.addItems(sorted(SPECIES.values()))
-        saved_species = self.settings_manager.settings.get("METADATA_CONFIG", {}).get("species", "").strip()
-        species_idx = self.set_species.findText(saved_species)
-        self.set_species.setCurrentIndex(species_idx if species_idx >= 0 else 0)
-
         # -- Add to Layout --
         settings_layout.addRow(QLabel("<b>Epoch Window</b>"))
         settings_layout.addRow("Pre-Stimulus Time (ms):", self.set_pre_stim)
@@ -853,8 +887,6 @@ class VERMainWindow(QMainWindow):
         settings_layout.addRow(QLabel("<b>Wavelet Tuning</b>"))
         settings_layout.addRow("Wavelet Bandwidth (Time Resolution):", self.set_wav_bw)
         settings_layout.addRow("Wavelet Center Freq (Freq Focus):", self.set_wav_cf)
-        settings_layout.addRow(QLabel("<b>ML Metadata</b>"))
-        settings_layout.addRow("Species:", self.set_species)
 
         # -- Save Button --
         self.save_settings_btn = QPushButton("Save and Apply Settings")
@@ -1246,7 +1278,7 @@ class VERMainWindow(QMainWindow):
         new_settings["WAVELET_CONFIG"]["bandwidth"] = float(self.set_wav_bw.value())
         new_settings["WAVELET_CONFIG"]["center_freq"] = float(self.set_wav_cf.value())
         new_settings.setdefault("METADATA_CONFIG", {})
-        new_settings["METADATA_CONFIG"]["species"] = self.set_species.currentText().strip()
+        new_settings["METADATA_CONFIG"]["species"] = self._selected_species_value()
 
         self._sync_artifact_settings_from_ui()
 
@@ -1527,7 +1559,7 @@ class VERMainWindow(QMainWindow):
                 png_path=result.get("png"),
                 parent=self,
                 filename=Path(report_input).name,
-                species=self.set_species.currentText().strip(),
+                species=self._selected_species_value(),
             )
             
             # If the user clicked save, regenerate and overwrite the files!
