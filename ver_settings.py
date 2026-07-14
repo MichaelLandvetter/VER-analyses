@@ -80,6 +80,9 @@ class SettingsManager:
                 "scroll_seconds": 10,
                 "max_epoch_overlays": 120,
                 "scroll_max_fps": 30
+            },
+            "METADATA_CONFIG": {
+                "species": ""
             }
         }
         self.settings = self.load_settings()

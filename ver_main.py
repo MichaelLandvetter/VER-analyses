@@ -43,7 +43,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ver_acquisition import FileAcquisitionSimulator, SerialAcquisitionSource
-from ver_config import ACQ_CONFIG, EPOCH_CONFIG, FILE_CONFIG, FILE_FORMATS, FILTER_CONFIG, SERIAL_CONFIG
+from ver_config import ACQ_CONFIG, EPOCH_CONFIG, FILE_CONFIG, FILE_FORMATS, FILTER_CONFIG, SERIAL_CONFIG, SPECIES
 from ver_constants import DEFAULT_SCOPE_FILTER_MODE, SCOPE_FILTER_MODES
 from ver_display import VERDisplayWidget
 from ver_filter import BandpassFilter
@@ -836,6 +836,14 @@ class VERMainWindow(QMainWindow):
         self.set_wav_cf.setSingleStep(0.1)
         self.set_wav_cf.setValue(float(self.settings_manager.settings["WAVELET_CONFIG"].get("center_freq", 2.0)))
 
+        # -- Metadata settings --
+        self.set_species = QComboBox()
+        self.set_species.addItem("")
+        self.set_species.addItems(sorted(SPECIES.values()))
+        saved_species = self.settings_manager.settings.get("METADATA_CONFIG", {}).get("species", "").strip()
+        species_idx = self.set_species.findText(saved_species)
+        self.set_species.setCurrentIndex(species_idx if species_idx >= 0 else 0)
+
         # -- Add to Layout --
         settings_layout.addRow(QLabel("<b>Epoch Window</b>"))
         settings_layout.addRow("Pre-Stimulus Time (ms):", self.set_pre_stim)
@@ -845,6 +853,8 @@ class VERMainWindow(QMainWindow):
         settings_layout.addRow(QLabel("<b>Wavelet Tuning</b>"))
         settings_layout.addRow("Wavelet Bandwidth (Time Resolution):", self.set_wav_bw)
         settings_layout.addRow("Wavelet Center Freq (Freq Focus):", self.set_wav_cf)
+        settings_layout.addRow(QLabel("<b>ML Metadata</b>"))
+        settings_layout.addRow("Species:", self.set_species)
 
         # -- Save Button --
         self.save_settings_btn = QPushButton("Save and Apply Settings")
@@ -1235,6 +1245,8 @@ class VERMainWindow(QMainWindow):
         # Update Wavelet numbers
         new_settings["WAVELET_CONFIG"]["bandwidth"] = float(self.set_wav_bw.value())
         new_settings["WAVELET_CONFIG"]["center_freq"] = float(self.set_wav_cf.value())
+        new_settings.setdefault("METADATA_CONFIG", {})
+        new_settings["METADATA_CONFIG"]["species"] = self.set_species.currentText().strip()
 
         self._sync_artifact_settings_from_ui()
 
@@ -1513,7 +1525,9 @@ class VERMainWindow(QMainWindow):
                 session_ver_peaks=self.session_ver_peaks,
                 labels=self.session_labels if self.session_labels else [],
                 png_path=result.get("png"),
-                parent=self
+                parent=self,
+                filename=Path(report_input).name,
+                species=self.set_species.currentText().strip(),
             )
             
             # If the user clicked save, regenerate and overwrite the files!

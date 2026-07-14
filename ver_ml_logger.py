@@ -11,11 +11,13 @@ from ver_classifier import evaluate_ver_peak
 from ver_settings import SettingsManager
 
 class HumanValidationDialog(QDialog):
-    def __init__(self, block_data, png_path=None, parent=None):
+    def __init__(self, block_data, png_path=None, parent=None, filename="", species=""):
         super().__init__(parent)
         self.setWindowTitle("Machine Learning - Human Validation")
         self.resize(1200, 750) 
         self.block_data = block_data
+        self.filename = filename
+        self.species = species
         self.human_overrides = []
 
         main_layout = QVBoxLayout(self)
@@ -47,6 +49,14 @@ class HumanValidationDialog(QDialog):
                      "4. Click Save to append to your ML dataset.")
         lbl.setWordWrap(True)
         main_layout.addWidget(lbl)
+
+        metadata_lbl = QLabel(
+            f"<b>Source file:</b> {self.filename or '(not set)'}<br>"
+            f"<b>Species:</b> {self.species or '(not set)'}"
+        )
+        metadata_lbl.setWordWrap(True)
+        metadata_lbl.setStyleSheet("background-color: #f5f5f5; padding: 6px; border: 1px solid #d0d0d0;")
+        main_layout.addWidget(metadata_lbl)
 
         # --- 3. BOTTOM: The Validation Table ---
         self.table = QTableWidget()
@@ -109,9 +119,8 @@ class HumanValidationDialog(QDialog):
             with open(csv_path, mode="a", newline="") as f:
                 writer = csv.writer(f)
                 if not file_exists:
-                    # CSV Header remains exactly the same to preserve old data
                     writer.writerow(["Block", "Power", "Scale_Hz", "P1_Latency", "P2_Latency", 
-                                     "P3_Latency", "SNR-2", "Computer_Label", "Human_Label", "Reason"])
+                                     "P3_Latency", "SNR-2", "Computer_Label", "Human_Label", "Reason", "filename", "species"])
                 
                 for i, data in enumerate(self.block_data):
                     is_ver = self.combos[i].currentText() == "VER"
@@ -123,7 +132,7 @@ class HumanValidationDialog(QDialog):
                     writer.writerow([
                         data['block'], data['power'], data['scale'],
                         data['p1_lat'], data['p2_lat'], data['p3_lat'], data['snr'],
-                        comp_label, human_label, data['reason']
+                        comp_label, human_label, data['reason'], self.filename, self.species
                     ])
             
             self.accept()
@@ -131,7 +140,17 @@ class HumanValidationDialog(QDialog):
             QMessageBox.critical(self, "Error", f"Could not save training data: {e}")
 
 
-def launch_ml_logger(session_wavelets, session_wavelet_freqs, epoch_time_ms, session_ver_peaks, labels, png_path=None, parent=None):
+def launch_ml_logger(
+    session_wavelets,
+    session_wavelet_freqs,
+    epoch_time_ms,
+    session_ver_peaks,
+    labels,
+    png_path=None,
+    parent=None,
+    filename="",
+    species="",
+):
     """Helper function to extract features and launch the UI."""
     manager = SettingsManager()
     cfg = manager.load_settings().get("CLASSIFIER_CONFIG", {})
@@ -172,7 +191,7 @@ def launch_ml_logger(session_wavelets, session_wavelet_freqs, epoch_time_ms, ses
             'computer_label': is_ver, 'reason': reason
         })
 
-    dialog = HumanValidationDialog(block_data, png_path, parent)
+    dialog = HumanValidationDialog(block_data, png_path, parent, filename=filename, species=species)
     
     if dialog.exec() == QDialog.DialogCode.Accepted:
         return dialog.human_overrides
