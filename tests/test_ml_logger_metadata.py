@@ -78,6 +78,7 @@ def test_ver_main_source_moves_species_selector_into_data_file_group():
     assert "layout2.addLayout(species_layout)" in src
     assert "file_species_combo" in self_attrs
     assert "set_species" not in self_attrs
+    assert "self.set_species" not in src
     assert 'return "" if species_value == "(not set)" else species_value' in src
     assert 'new_settings["METADATA_CONFIG"]["species"] = self._selected_species_value()' in src
     assert "species=self._selected_species_value()," in src

@@ -595,7 +595,7 @@ class VERMainWindow(QMainWindow):
         if isinstance(SPECIES, dict):
             species_values = SPECIES.values()
         elif SPECIES is None:
-            species_values = []
+            return []
         elif isinstance(SPECIES, str):
             species_values = [SPECIES]
         else:
