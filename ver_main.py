@@ -592,7 +592,17 @@ class VERMainWindow(QMainWindow):
     def _species_options(self) -> list[str]:
         """Return the runtime species choices exposed by ver_config."""
 
-        species_values = SPECIES.values() if isinstance(SPECIES, dict) else SPECIES
+        if isinstance(SPECIES, dict):
+            species_values = SPECIES.values()
+        elif SPECIES is None:
+            species_values = []
+        elif isinstance(SPECIES, str):
+            species_values = [SPECIES]
+        else:
+            try:
+                species_values = list(SPECIES)
+            except TypeError:
+                species_values = [SPECIES]
         return sorted(str(species).strip() for species in species_values if str(species).strip())
 
     def _selected_species_value(self) -> str:

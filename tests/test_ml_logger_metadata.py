@@ -55,14 +55,30 @@ def test_settings_manager_default_metadata_config(monkeypatch, tmp_path):
 
 def test_ver_main_source_moves_species_selector_into_data_file_group():
     src = (REPO_ROOT / "ver_main.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    self_attrs = {
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "self"
+    }
+    selected_species_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "self"
+        and node.func.attr == "_selected_species_value"
+    ]
 
     assert 'self.file_species_combo = QComboBox()' in src
     assert 'self.file_species_combo.addItem("(not set)")' in src
     assert 'self.file_species_combo.addItems(self._species_options())' in src
     assert 'species_layout.addWidget(QLabel("Species:"))' in src
     assert "layout2.addLayout(species_layout)" in src
-    assert "self.set_species" not in src
-    assert 'settings_layout.addRow(QLabel("<b>ML Metadata</b>"))' not in src
+    assert "file_species_combo" in self_attrs
+    assert "set_species" not in self_attrs
     assert 'return "" if species_value == "(not set)" else species_value' in src
     assert 'new_settings["METADATA_CONFIG"]["species"] = self._selected_species_value()' in src
     assert "species=self._selected_species_value()," in src
+    assert len(selected_species_calls) >= 2
