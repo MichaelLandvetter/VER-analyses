@@ -603,11 +603,11 @@ class VERMainWindow(QMainWindow):
                 species_values = list(SPECIES)
             except TypeError:
                 log.warning("Unexpected SPECIES configuration %r; using its string form.", SPECIES)
-                species_values = [SPECIES]
+                species_values = [str(SPECIES)]
         return sorted(str(species).strip() for species in species_values if str(species).strip())
 
     def _set_species_selection(self, species_value: str) -> None:
-        """Restore the Box 2 species choice, defaulting to `(not set)` when absent."""
+        """Restore the Box 2 species choice, tolerating untrimmed input and missing values."""
 
         if not hasattr(self, "file_species_combo"):
             return
