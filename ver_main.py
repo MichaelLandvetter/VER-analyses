@@ -625,7 +625,8 @@ class VERMainWindow(QMainWindow):
     def _on_species_changed(self, _text: str) -> None:
         """Immediately persist the Box 2 species selection so the next file open uses it."""
 
-        self.settings_manager.settings.setdefault("METADATA_CONFIG", {})["species"] = self._selected_species_value()
+        metadata = self.settings_manager.settings.setdefault("METADATA_CONFIG", {})
+        metadata["species"] = self._selected_species_value()
         self.settings_manager.save_settings()
 
     def _launch_usb_test(self):
