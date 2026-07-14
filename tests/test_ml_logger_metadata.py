@@ -83,3 +83,25 @@ def test_ver_main_source_moves_species_selector_into_data_file_group():
     assert 'new_settings["METADATA_CONFIG"]["species"] = self._selected_species_value()' in src
     assert "species=self._selected_species_value()," in src
     assert len(selected_species_calls) >= 2
+    # Persistence: species change must be wired to save immediately
+    assert "self.file_species_combo.currentTextChanged.connect(self._on_species_changed)" in src
+    assert "def _on_species_changed(" in src
+    assert 'metadata["species"] = self._selected_species_value()' in src
+    assert "self.settings_manager.save_settings()" in src
+    # Ordering: connect must come after the initial restore to prevent a spurious save on startup
+    connect_pos = src.find("self.file_species_combo.currentTextChanged.connect(self._on_species_changed)")
+    restore_pos = src.find("self._set_species_selection(saved_species)")
+    assert restore_pos != -1, "_set_species_selection(saved_species) not found in source"
+    assert connect_pos != -1, "currentTextChanged.connect(_on_species_changed) not found in source"
+    assert restore_pos < connect_pos, "_set_species_selection must appear before the signal connect in _build_ui"
+
+
+def test_settings_manager_species_round_trip(monkeypatch, tmp_path):
+    """Species written via SettingsManager.save_settings() is reloaded correctly."""
+    monkeypatch.chdir(tmp_path)
+    manager = SettingsManager()
+    manager.settings.setdefault("METADATA_CONFIG", {})["species"] = "Cat"
+    manager.save_settings()
+
+    manager2 = SettingsManager()
+    assert manager2.settings["METADATA_CONFIG"]["species"] == "Cat"
