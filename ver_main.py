@@ -602,11 +602,20 @@ class VERMainWindow(QMainWindow):
             try:
                 species_values = list(SPECIES)
             except TypeError:
+                log.warning("Unexpected SPECIES configuration %r; using its string form.", SPECIES)
                 species_values = [SPECIES]
         return sorted(str(species).strip() for species in species_values if str(species).strip())
 
+    def _set_species_selection(self, species_value: str) -> None:
+        """Restore the Box 2 species choice, defaulting to `(not set)` when absent."""
+
+        if not hasattr(self, "file_species_combo"):
+            return
+        species_idx = self.file_species_combo.findText(species_value.strip())
+        self.file_species_combo.setCurrentIndex(species_idx if species_idx >= 0 else 0)
+
     def _selected_species_value(self) -> str:
-        """Return the selected species, normalizing the placeholder to empty."""
+        """Return the Box 2 species selection, even if called before the combo is built."""
 
         if not hasattr(self, "file_species_combo"):
             return ""
@@ -679,8 +688,7 @@ class VERMainWindow(QMainWindow):
         self.file_species_combo.addItem("(not set)")
         self.file_species_combo.addItems(self._species_options())
         saved_species = self.settings_manager.settings.get("METADATA_CONFIG", {}).get("species", "").strip()
-        species_idx = self.file_species_combo.findText(saved_species)
-        self.file_species_combo.setCurrentIndex(species_idx if species_idx >= 0 else 0)
+        self._set_species_selection(saved_species)
 
         # --- Filter Widgets ---
         self.low_spin = QSpinBox()
