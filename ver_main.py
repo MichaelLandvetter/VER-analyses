@@ -695,6 +695,7 @@ class VERMainWindow(QMainWindow):
         self.file_species_combo.addItems(self._species_options())
         saved_species = self.settings_manager.settings.get("METADATA_CONFIG", {}).get("species", "").strip()
         self._set_species_selection(saved_species)
+        # Connect AFTER restoring the saved value so the initial restore does not trigger a spurious save.
         self.file_species_combo.currentTextChanged.connect(self._on_species_changed)
 
         # --- Filter Widgets ---
