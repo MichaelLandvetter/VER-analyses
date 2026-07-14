@@ -83,3 +83,8 @@ def test_ver_main_source_moves_species_selector_into_data_file_group():
     assert 'new_settings["METADATA_CONFIG"]["species"] = self._selected_species_value()' in src
     assert "species=self._selected_species_value()," in src
     assert len(selected_species_calls) >= 2
+    # Persistence: species change must be wired to save immediately
+    assert "self.file_species_combo.currentTextChanged.connect(self._on_species_changed)" in src
+    assert "def _on_species_changed(" in src
+    assert 'self.settings_manager.settings.setdefault("METADATA_CONFIG", {})["species"] = self._selected_species_value()' in src
+    assert "self.settings_manager.save_settings()" in src

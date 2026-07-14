@@ -622,6 +622,12 @@ class VERMainWindow(QMainWindow):
         species_value = self.file_species_combo.currentText().strip()
         return "" if species_value == "(not set)" else species_value
 
+    def _on_species_changed(self, _text: str) -> None:
+        """Immediately persist the Box 2 species selection so the next file open uses it."""
+
+        self.settings_manager.settings.setdefault("METADATA_CONFIG", {})["species"] = self._selected_species_value()
+        self.settings_manager.save_settings()
+
     def _launch_usb_test(self):
         """Launches the dedicated USB test program directly within the application."""
         # Import the GUI class from your USB test file
@@ -689,6 +695,7 @@ class VERMainWindow(QMainWindow):
         self.file_species_combo.addItems(self._species_options())
         saved_species = self.settings_manager.settings.get("METADATA_CONFIG", {}).get("species", "").strip()
         self._set_species_selection(saved_species)
+        self.file_species_combo.currentTextChanged.connect(self._on_species_changed)
 
         # --- Filter Widgets ---
         self.low_spin = QSpinBox()
