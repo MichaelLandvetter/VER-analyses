@@ -71,6 +71,16 @@
         "max_epoch_overlays": 120,
         "scroll_max_fps": 30
     },
+    "SPECIES": {
+        "Rainbow trout": "Rainbow trout",
+        "Atlantic salmon": "Atlantic salmon",
+        "Nile tilapia": "Nile tilapia",
+        "African sharptooth catfish": "African sharptooth catfish",
+        "Channel catfish": "Channel catfish",
+        "Gilthead seabream": "Gilthead seabream",
+        "European seabass": "European seabass",
+        "Coho salmon": "Coho salmon"
+    },
     "METADATA_CONFIG": {
         "species": ""
     }

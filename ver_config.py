@@ -92,7 +92,8 @@ SPECIES = {
 	"African sharptooth catfish":"African sharptooth catfish",
 	"Channel catfish":"Channel catfish",
 	"Gilthead seabream":"Gilthead seabream",
-	"European seabass":"European seabass"
+	"European seabass":"European seabass",
+    "Coho salmon":"Coho salmon"
 }
 # ==============================================================================
 # JSON OVERRIDE BLOCK
