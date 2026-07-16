@@ -36,6 +36,10 @@ class HumanValidationDialog(QDialog):
         self.species = species
         self.human_overrides = []
 
+        self._settings_manager = SettingsManager()
+        _all_settings = self._settings_manager.load_settings()
+        self._default_observer_id = _all_settings.get("ML_LOGGER", {}).get("observer_id", "")
+
         main_layout = QVBoxLayout(self)
 
         # --- 1. TOP: The Report Image ---
@@ -79,6 +83,8 @@ class HumanValidationDialog(QDialog):
         self.observer_id_input = QLineEdit()
         self.observer_id_input.setPlaceholderText("Enter your observer ID (applied to all rows)")
         self.observer_id_input.setMaximumWidth(300)
+        if self._default_observer_id:
+            self.observer_id_input.setText(self._default_observer_id)
         observer_layout.addWidget(self.observer_id_input)
         observer_layout.addStretch()
         main_layout.addLayout(observer_layout)
@@ -177,22 +183,39 @@ class HumanValidationDialog(QDialog):
                 )
                 return
 
+        observer_id = self.observer_id_input.text().strip()
+
+        # --- Pre-write validation: Human_Reason is required when labels differ ---
+        # Collect all row data first so we can validate everything before
+        # opening the CSV, preventing any partial writes on failure.
+        rows_to_write = []
+        for i, data in enumerate(self.block_data):
+            is_ver = self.combos[i].currentText() == "VER"
+            human_label = 1 if is_ver else 0
+            comp_label = 1 if data['computer_label'] else 0
+            human_reason = self.reason_combos[i].currentText().strip()
+            review_confidence = self.conf_combos[i].currentText().strip()
+
+            if human_label != comp_label and not human_reason:
+                QMessageBox.warning(
+                    self,
+                    "Human Reason Required",
+                    f"Row {i + 1} (Block: {data['block']}): <b>Human Reason</b> must be filled in "
+                    f"when Human Label differs from Computer Label.\n\n"
+                    f"Please select or enter a reason before saving.",
+                )
+                return
+
+            rows_to_write.append((is_ver, human_label, comp_label, human_reason, review_confidence, data))
+
         try:
-            observer_id = self.observer_id_input.text().strip()
             with open(csv_path, mode="a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 if not file_exists:
                     writer.writerow(_NEW_CSV_HEADER)
 
-                for i, data in enumerate(self.block_data):
-                    is_ver = self.combos[i].currentText() == "VER"
+                for is_ver, human_label, comp_label, human_reason, review_confidence, data in rows_to_write:
                     self.human_overrides.append(is_ver)
-
-                    human_label = 1 if is_ver else 0
-                    comp_label = 1 if data['computer_label'] else 0
-                    human_reason = self.reason_combos[i].currentText().strip()
-                    review_confidence = self.conf_combos[i].currentText().strip()
-
                     writer.writerow([
                         data['block'], data['power'], data['scale'],
                         data['p1_lat'], data['p2_lat'], data['p3_lat'], data['snr'],
@@ -200,6 +223,11 @@ class HumanValidationDialog(QDialog):
                         human_label, human_reason, observer_id, review_confidence,
                         self.filename, self.species,
                     ])
+
+            # Persist observer_id so the dialog is prefilled on the next run
+            all_settings = self._settings_manager.load_settings()
+            all_settings.setdefault("ML_LOGGER", {})["observer_id"] = observer_id
+            self._settings_manager.save_settings(all_settings)
 
             self.accept()
         except Exception as e:
