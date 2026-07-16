@@ -142,11 +142,18 @@ def test_settings_manager_observer_id_round_trip(monkeypatch, tmp_path):
 def test_settings_manager_observer_id_absent_defaults_empty(monkeypatch, tmp_path):
     """When ML_LOGGER key is absent, get() with default '' returns empty string (backward-compat)."""
     monkeypatch.chdir(tmp_path)
-    manager = SettingsManager()
-    all_settings = manager.load_settings()
+    initial_manager = SettingsManager()
+    settings_path = tmp_path / "user_settings.json"
+    all_settings = json.loads(settings_path.read_text(encoding="utf-8"))
     # Simulate older files where ML_LOGGER was absent.
     all_settings.pop("ML_LOGGER", None)
-    assert all_settings.get("ML_LOGGER", {}).get("observer_id", "") == ""
+    settings_path.write_text(json.dumps(all_settings), encoding="utf-8")
+    persisted_without_ml_logger = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert "ML_LOGGER" not in persisted_without_ml_logger
+
+    reloaded = SettingsManager().load_settings()
+    assert reloaded["ML_LOGGER"]["observer_id"] == ""
+    assert initial_manager.settings_file.exists()
 
 
 def test_settings_manager_backfills_missing_sections_without_overwriting_user_values(monkeypatch, tmp_path):
@@ -164,13 +171,15 @@ def test_settings_manager_backfills_missing_sections_without_overwriting_user_va
     (tmp_path / "user_settings.json").write_text(json.dumps(legacy_settings), encoding="utf-8")
 
     manager = SettingsManager()
-    reloaded = manager.load_settings()
+    reloaded = manager.settings
 
     assert reloaded["FILE_FORMATS"]["SD-card"]["delimiter"] == ","
     assert "trigger_column" in reloaded["FILE_FORMATS"]["SD-card"]
     assert "LabChart" in reloaded["FILE_FORMATS"]
     assert reloaded["SPECIES"]["Custom species"] == "Custom species"
     assert "ML_LOGGER" in reloaded
+    persisted = json.loads((tmp_path / "user_settings.json").read_text(encoding="utf-8"))
+    assert "ML_LOGGER" in persisted
 
 
 def test_ml_logger_source_persists_and_prefills_observer_id():

@@ -103,21 +103,32 @@ class SettingsManager:
 
     def _inject_missing_defaults(self, settings_dict):
         """Recursively fill missing keys from default_settings without overwriting user values."""
-        needs_save = False
-
-        def _merge_missing(target, defaults):
-            nonlocal needs_save
+        def _merge_missing(target, defaults, parent_path=""):
+            changed = False
             for key, default_value in defaults.items():
+                key_path = f"{parent_path}.{key}" if parent_path else key
                 if key not in target:
-                    target[key] = copy.deepcopy(default_value)
-                    needs_save = True
-                elif isinstance(default_value, dict) and isinstance(target.get(key), dict):
-                    _merge_missing(target[key], default_value)
+                    if isinstance(default_value, dict):
+                        target[key] = copy.deepcopy(default_value)
+                    else:
+                        target[key] = default_value
+                    changed = True
+                elif isinstance(default_value, dict):
+                    if isinstance(target[key], dict):
+                        changed = _merge_missing(target[key], default_value, key_path) or changed
+                    else:
+                        actual_type = type(target[key]).__name__
+                        print(
+                            f"Warning: Resetting '{key_path}' to defaults - expected dict but found {actual_type}."
+                        )
+                        target[key] = copy.deepcopy(default_value)
+                        changed = True
+            return changed
 
         if isinstance(settings_dict, dict):
-            _merge_missing(settings_dict, self.default_settings)
+            return _merge_missing(settings_dict, self.default_settings)
 
-        return needs_save
+        return False
         
     def load_settings(self):
         """Loads the settings from the JSON file, or creates it if missing."""
@@ -148,11 +159,8 @@ class SettingsManager:
         if settings_dict is None:
             settings_dict = self.settings
 
-        self._inject_missing_defaults(settings_dict)
-
         try:
             with open(self.settings_file, "w") as f:
                 json.dump(settings_dict, f, indent=4)
-            self.settings = settings_dict
         except Exception as e:
             print(f"Warning: Could not save settings ({e}).")
