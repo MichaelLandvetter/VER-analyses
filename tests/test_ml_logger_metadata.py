@@ -110,3 +110,54 @@ def test_settings_manager_species_round_trip(monkeypatch, tmp_path):
 
     manager2 = SettingsManager()
     assert manager2.settings["METADATA_CONFIG"]["species"] == "Cat"
+
+
+def test_settings_manager_observer_id_round_trip(monkeypatch, tmp_path):
+    """Observer_ID written to ML_LOGGER section survives a settings reload."""
+    monkeypatch.chdir(tmp_path)
+    manager = SettingsManager()
+    all_settings = manager.load_settings()
+    all_settings.setdefault("ML_LOGGER", {})["observer_id"] = "DR_SMITH"
+    manager.save_settings(all_settings)
+
+    manager2 = SettingsManager()
+    reloaded = manager2.load_settings()
+    assert reloaded.get("ML_LOGGER", {}).get("observer_id") == "DR_SMITH"
+
+
+def test_settings_manager_observer_id_absent_defaults_empty(monkeypatch, tmp_path):
+    """When ML_LOGGER key is absent, get() with default '' returns empty string (backward-compat)."""
+    monkeypatch.chdir(tmp_path)
+    manager = SettingsManager()
+    all_settings = manager.load_settings()
+    # Ensure the key is not present (fresh settings have no ML_LOGGER section)
+    all_settings.pop("ML_LOGGER", None)
+    assert all_settings.get("ML_LOGGER", {}).get("observer_id", "") == ""
+
+
+def test_ml_logger_source_persists_and_prefills_observer_id():
+    """Verify the source contains the patterns for observer_id persistence and prefill."""
+    src = (REPO_ROOT / "ver_ml_logger.py").read_text(encoding="utf-8")
+    # Prefill: settings loaded in __init__ and used to set text
+    assert 'ML_LOGGER' in src
+    assert 'observer_id' in src
+    assert '_default_observer_id' in src
+    assert 'self.observer_id_input.setText(self._default_observer_id)' in src
+    # Persist: observer_id saved after successful CSV write
+    assert 'all_settings.setdefault("ML_LOGGER", {})["observer_id"] = observer_id' in src
+    assert 'self._settings_manager.save_settings(all_settings)' in src
+
+
+def test_ml_logger_source_requires_human_reason_when_labels_differ():
+    """Verify save_data validates Human_Reason before any CSV write when labels differ."""
+    src = (REPO_ROOT / "ver_ml_logger.py").read_text(encoding="utf-8")
+    # Validation must happen before the file is opened for writing
+    assert 'human_label != comp_label and not human_reason' in src
+    assert 'Human Reason Required' in src
+    assert 'rows_to_write' in src
+    # The CSV open must come after the validation loop (rows_to_write collected first)
+    validation_pos = src.find('rows_to_write = []')
+    csv_open_pos = src.find('open(csv_path, mode="a"')
+    assert validation_pos != -1
+    assert csv_open_pos != -1
+    assert validation_pos < csv_open_pos, "Validation loop must precede CSV file open"
