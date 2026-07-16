@@ -177,16 +177,12 @@ class HumanValidationDialog(QDialog):
                 )
                 return
 
-        observer_id = self.observer_id_input.text().strip()
-
         try:
+            observer_id = self.observer_id_input.text().strip()
             with open(csv_path, mode="a", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
                 if not file_exists:
-                    writer.writerow(["Block", "Power", "Scale_Hz", "P1_Latency", "P2_Latency",
-                                     "P3_Latency", "SNR", "Computer_Label", "Computer_Reason",
-                                     "Human_Label", "Human_Reason", "Observer_ID", "Review_Confidence",
-                                     "File name", "Species"])
+                    writer.writerow(_NEW_CSV_HEADER)
 
                 for i, data in enumerate(self.block_data):
                     is_ver = self.combos[i].currentText() == "VER"

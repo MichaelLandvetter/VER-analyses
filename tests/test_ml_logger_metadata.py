@@ -23,14 +23,16 @@ def test_ml_logger_source_includes_metadata_fields_and_compact_table():
         ):
             table_headers = [elt.value for elt in node.args[0].elts if isinstance(elt, ast.Constant)]
 
+        # The header is written via writer.writerow(_NEW_CSV_HEADER), so look for
+        # the module-level _NEW_CSV_HEADER assignment to obtain the canonical list.
         if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "writerow"
-            and node.args
-            and isinstance(node.args[0], ast.List)
+            isinstance(node, ast.Assign)
+            and node.targets
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "_NEW_CSV_HEADER"
+            and isinstance(node.value, ast.List)
         ):
-            values = [elt.value for elt in node.args[0].elts if isinstance(elt, ast.Constant)]
+            values = [elt.value for elt in node.value.elts if isinstance(elt, ast.Constant)]
             if "Block" in values and "Human_Label" in values:
                 csv_headers = values
 
