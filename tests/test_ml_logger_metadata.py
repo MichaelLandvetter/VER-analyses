@@ -23,14 +23,16 @@ def test_ml_logger_source_includes_metadata_fields_and_compact_table():
         ):
             table_headers = [elt.value for elt in node.args[0].elts if isinstance(elt, ast.Constant)]
 
+        # The header is written via writer.writerow(_NEW_CSV_HEADER), so look for
+        # the module-level _NEW_CSV_HEADER assignment to obtain the canonical list.
         if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "writerow"
-            and node.args
-            and isinstance(node.args[0], ast.List)
+            isinstance(node, ast.Assign)
+            and node.targets
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "_NEW_CSV_HEADER"
+            and isinstance(node.value, ast.List)
         ):
-            values = [elt.value for elt in node.args[0].elts if isinstance(elt, ast.Constant)]
+            values = [elt.value for elt in node.value.elts if isinstance(elt, ast.Constant)]
             if "Block" in values and "Human_Label" in values:
                 csv_headers = values
 
@@ -38,11 +40,14 @@ def test_ml_logger_source_includes_metadata_fields_and_compact_table():
     assert csv_headers is not None
     assert '"Human Validation"' in src
     assert '"Computer Reason"' in src
+    assert '"Human Reason"' in src
+    assert '"Review Confidence"' in src
+    assert "Observer ID" in src
     assert "filename" not in table_headers
     assert "species" not in table_headers
     assert "Source file:</b>" in src
     assert "Species:</b>" in src
-    assert csv_headers[-2:] == ["filename", "species"]
+    assert csv_headers[-2:] == ["File name", "Species"]
     assert "self.filename, self.species" in src
 
 
