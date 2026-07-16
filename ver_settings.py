@@ -1,4 +1,5 @@
 """Module for managing user settings via an external JSON file."""
+import copy
 import json
 from pathlib import Path
 
@@ -81,34 +82,57 @@ class SettingsManager:
                 "max_epoch_overlays": 120,
                 "scroll_max_fps": 30
             },
+            "SPECIES": {
+                "Rainbow trout": "Rainbow trout",
+                "Atlantic salmon": "Atlantic salmon",
+                "Nile tilapia": "Nile tilapia",
+                "African sharptooth catfish": "African sharptooth catfish",
+                "Channel catfish": "Channel catfish",
+                "Gilthead seabream": "Gilthead seabream",
+                "European seabass": "European seabass",
+                "Coho salmon": "Coho salmon"
+            },
             "METADATA_CONFIG": {
                 "species": ""
+            },
+            "ML_LOGGER": {
+                "observer_id": ""
             }
         }
         self.settings = self.load_settings()
+
+    def _inject_missing_defaults(self, settings_dict):
+        """Recursively fill missing keys from default_settings without overwriting user values."""
+        needs_save = False
+
+        def _merge_missing(target, defaults):
+            nonlocal needs_save
+            for key, default_value in defaults.items():
+                if key not in target:
+                    target[key] = copy.deepcopy(default_value)
+                    needs_save = True
+                elif isinstance(default_value, dict) and isinstance(target.get(key), dict):
+                    _merge_missing(target[key], default_value)
+
+        if isinstance(settings_dict, dict):
+            _merge_missing(settings_dict, self.default_settings)
+
+        return needs_save
         
     def load_settings(self):
         """Loads the settings from the JSON file, or creates it if missing."""
         if not self.settings_file.exists():
-            self.save_settings(self.default_settings)
-            return self.default_settings
+            initial_settings = copy.deepcopy(self.default_settings)
+            self.save_settings(initial_settings)
+            return initial_settings
         
         try:
             with open(self.settings_file, "r") as f:
                 user_settings = json.load(f)
             
-            # Smart Update: If we add new features later, this ensures old JSON files 
+            # Smart Update: If we add new features later, this ensures old JSON files
             # don't crash the program. It safely injects missing keys.
-            needs_save = False
-            for category, defaults in self.default_settings.items():
-                if category not in user_settings:
-                    user_settings[category] = defaults
-                    needs_save = True
-                else:
-                    for key, val in defaults.items():
-                        if key not in user_settings[category]:
-                            user_settings[category][key] = val
-                            needs_save = True
+            needs_save = self._inject_missing_defaults(user_settings)
             
             if needs_save:
                 self.save_settings(user_settings)
@@ -116,16 +140,19 @@ class SettingsManager:
             return user_settings
         except Exception as e:
             print(f"Warning: Could not read settings ({e}). Using defaults.")
-            return self.default_settings
+            return copy.deepcopy(self.default_settings)
 
     def save_settings(self, settings_dict=None):
         """Saves the given dictionary to the JSON file. Defaults to self.settings."""
         # If no specific dictionary is passed, use the one stored in memory!
         if settings_dict is None:
             settings_dict = self.settings
-            
+
+        self._inject_missing_defaults(settings_dict)
+
         try:
             with open(self.settings_file, "w") as f:
                 json.dump(settings_dict, f, indent=4)
+            self.settings = settings_dict
         except Exception as e:
             print(f"Warning: Could not save settings ({e}).")

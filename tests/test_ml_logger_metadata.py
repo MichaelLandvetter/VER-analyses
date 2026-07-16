@@ -1,4 +1,5 @@
 import ast
+import json
 from pathlib import Path
 
 from ver_settings import SettingsManager
@@ -56,6 +57,19 @@ def test_settings_manager_default_metadata_config(monkeypatch, tmp_path):
     manager = SettingsManager()
     assert manager.default_settings["METADATA_CONFIG"]["species"] == ""
     assert manager.settings["METADATA_CONFIG"]["species"] == ""
+
+
+def test_settings_manager_first_run_seeds_core_editable_sections(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    manager = SettingsManager()
+    settings_path = tmp_path / "user_settings.json"
+    persisted = json.loads(settings_path.read_text(encoding="utf-8"))
+
+    assert "FILE_FORMATS" in persisted
+    assert "SPECIES" in persisted
+    assert "ML_LOGGER" in persisted
+    assert persisted["ML_LOGGER"]["observer_id"] == ""
+    assert manager.settings["SPECIES"] == persisted["SPECIES"]
 
 
 def test_ver_main_source_moves_species_selector_into_data_file_group():
@@ -130,9 +144,33 @@ def test_settings_manager_observer_id_absent_defaults_empty(monkeypatch, tmp_pat
     monkeypatch.chdir(tmp_path)
     manager = SettingsManager()
     all_settings = manager.load_settings()
-    # Ensure the key is not present (fresh settings have no ML_LOGGER section)
+    # Simulate older files where ML_LOGGER was absent.
     all_settings.pop("ML_LOGGER", None)
     assert all_settings.get("ML_LOGGER", {}).get("observer_id", "") == ""
+
+
+def test_settings_manager_backfills_missing_sections_without_overwriting_user_values(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    legacy_settings = {
+        "FILE_FORMATS": {
+            "SD-card": {
+                "delimiter": ","
+            }
+        },
+        "SPECIES": {
+            "Custom species": "Custom species"
+        }
+    }
+    (tmp_path / "user_settings.json").write_text(json.dumps(legacy_settings), encoding="utf-8")
+
+    manager = SettingsManager()
+    reloaded = manager.load_settings()
+
+    assert reloaded["FILE_FORMATS"]["SD-card"]["delimiter"] == ","
+    assert "trigger_column" in reloaded["FILE_FORMATS"]["SD-card"]
+    assert "LabChart" in reloaded["FILE_FORMATS"]
+    assert reloaded["SPECIES"]["Custom species"] == "Custom species"
+    assert "ML_LOGGER" in reloaded
 
 
 def test_ml_logger_source_persists_and_prefills_observer_id():
