@@ -1,5 +1,9 @@
 """Helpers for end-of-analysis action handling."""
 
+import logging
+
+log = logging.getLogger(__name__)
+
 PROCEED_TO_VALIDATION = "proceed_to_validation"
 BACK_TO_ANALYSIS = "back_to_analysis"
 CANCEL_ANALYSIS = "cancel"
@@ -10,6 +14,8 @@ def normalize_analysis_complete_action(action: str | None) -> str:
 
     if action in {PROCEED_TO_VALIDATION, BACK_TO_ANALYSIS, CANCEL_ANALYSIS}:
         return action
+    if action is not None:
+        log.warning("Unexpected analysis completion action %r; treating it as cancel.", action)
     return CANCEL_ANALYSIS
 
 

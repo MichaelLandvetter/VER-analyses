@@ -19,7 +19,7 @@ def _epoch_with_peaks():
     epoch_avg = np.zeros_like(epoch_time_ms, dtype=float)
 
     def _set_peak(latency_ms, amplitude):
-        idx = int(np.where(epoch_time_ms == latency_ms)[0][0])
+        idx = int(np.searchsorted(epoch_time_ms, latency_ms))
         epoch_avg[idx] = amplitude
 
     _set_peak(45.0, 4.0)

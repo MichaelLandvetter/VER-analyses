@@ -83,6 +83,14 @@ def _find_extrema_indices(segment: np.ndarray) -> np.ndarray:
     return np.concatenate([pos_peaks, neg_peaks])
 
 
+def _normalize_peak_detection_mode(mode: str | None) -> str:
+    """Return a supported peak-detection mode, falling back to the legacy mode."""
+
+    if mode == DOMINANT_OPPOSITE_NEIGHBORS_MODE:
+        return DOMINANT_OPPOSITE_NEIGHBORS_MODE
+    return DEFAULT_PEAK_DETECTION_MODE
+
+
 def _legacy_peak_assignments(segment: np.ndarray, seg_times: np.ndarray) -> dict[str, int | None]:
     """Return the historical Peak-1/2/3 assignments."""
 
@@ -157,7 +165,8 @@ def detect_ver_peaks(
     """
     cfg = _get_classifier_cfg(classifier_cfg)
     snr_threshold = cfg.get("snr_threshold", 2.0)
-    peak_detection_mode = cfg.get("peak_detection_mode", DEFAULT_PEAK_DETECTION_MODE)
+    raw_peak_detection_mode = cfg.get("peak_detection_mode")
+    peak_detection_mode = _normalize_peak_detection_mode(raw_peak_detection_mode)
     def _empty_peak() -> VERPeak:
         return {
             "latency_ms": float("nan"),
@@ -197,10 +206,10 @@ def detect_ver_peaks(
     if peak_detection_mode == DOMINANT_OPPOSITE_NEIGHBORS_MODE:
         peak_assignments = _dominant_opposite_neighbor_assignments(segment)
     else:
-        if peak_detection_mode != DEFAULT_PEAK_DETECTION_MODE:
+        if raw_peak_detection_mode not in (None, DEFAULT_PEAK_DETECTION_MODE):
             log.warning(
                 "Unknown peak_detection_mode %r; falling back to %s",
-                peak_detection_mode,
+                raw_peak_detection_mode,
                 DEFAULT_PEAK_DETECTION_MODE,
             )
         peak_assignments = _legacy_peak_assignments(segment, seg_times)
