@@ -88,6 +88,12 @@ def _resolve_peak_detection_mode(mode: str | None) -> str:
 
     if mode == DOMINANT_OPPOSITE_NEIGHBORS_MODE:
         return DOMINANT_OPPOSITE_NEIGHBORS_MODE
+    if mode not in (None, DEFAULT_PEAK_DETECTION_MODE):
+        log.warning(
+            "Unknown peak_detection_mode %r; falling back to %s",
+            mode,
+            DEFAULT_PEAK_DETECTION_MODE,
+        )
     return DEFAULT_PEAK_DETECTION_MODE
 
 
@@ -126,7 +132,7 @@ def _dominant_opposite_neighbor_assignments(segment: np.ndarray) -> dict[str, in
         }
 
     def is_opposite(value: float) -> bool:
-        return bool(dominant_sign and (value * dominant_sign < 0))
+        return bool(value * dominant_sign < 0)
 
     before = None
     after = None
@@ -179,8 +185,7 @@ def detect_ver_peaks(
     """
     cfg = _get_classifier_cfg(classifier_cfg)
     snr_threshold = cfg.get("snr_threshold", 2.0)
-    raw_peak_detection_mode = cfg.get("peak_detection_mode")
-    peak_detection_mode = _resolve_peak_detection_mode(raw_peak_detection_mode)
+    peak_detection_mode = _resolve_peak_detection_mode(cfg.get("peak_detection_mode"))
     def _empty_peak() -> VERPeak:
         return {
             "latency_ms": float("nan"),
@@ -220,12 +225,6 @@ def detect_ver_peaks(
     if peak_detection_mode == DOMINANT_OPPOSITE_NEIGHBORS_MODE:
         peak_assignments = _dominant_opposite_neighbor_assignments(segment)
     else:
-        if raw_peak_detection_mode not in (None, DEFAULT_PEAK_DETECTION_MODE):
-            log.warning(
-                "Unknown peak_detection_mode %r; falling back to %s",
-                raw_peak_detection_mode,
-                DEFAULT_PEAK_DETECTION_MODE,
-            )
         peak_assignments = _legacy_peak_assignments(segment, seg_times)
 
     result: VERPeaksResult = {

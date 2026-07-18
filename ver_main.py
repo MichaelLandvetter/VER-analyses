@@ -105,7 +105,7 @@ def prompt_analysis_complete_action(parent) -> str:
         if clicked_button == button:
             return action
     log.warning("Analysis complete dialog closed without a recognized button selection; treating as cancel.")
-    return normalize_analysis_complete_action(None)
+    return CANCEL_ANALYSIS
 
 def auto_detect_file_format(filepath: str) -> str | None:
     """
