@@ -12,7 +12,7 @@ from pathlib import Path
 
 import numpy as np
 import pyqtgraph as pg
-import ver_classifier
+import ver_classifier as ver_classifier_module
 import ver_peaks as ver_peaks_module
 
 if getattr(sys, 'frozen', False):
@@ -80,7 +80,7 @@ def _refresh_runtime_classifier_settings(classifier_cfg: dict | None) -> None:
 
     cfg = classifier_cfg or {}
 
-    ver_classifier.refresh_classifier_cfg(cfg)
+    ver_classifier_module.refresh_classifier_cfg(cfg)
     ver_peaks_module.refresh_classifier_cfg(cfg)
 
 

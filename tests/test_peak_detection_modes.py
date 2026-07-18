@@ -159,12 +159,12 @@ def test_analysis_complete_status_messages_match_choice():
     ) == "End of file reached"
 
 
-def test_refresh_runtime_classifier_settings_updates_both_runtime_caches():
+def test_refresh_runtime_classifier_settings_updates_both_modules():
     captured = {}
     helper = _load_ver_main_symbol(
         "_refresh_runtime_classifier_settings",
         extra_globals={
-            "ver_classifier": SimpleNamespace(
+            "ver_classifier_module": SimpleNamespace(
                 refresh_classifier_cfg=lambda cfg: captured.setdefault("classifier", dict(cfg))
             ),
             "ver_peaks_module": SimpleNamespace(
