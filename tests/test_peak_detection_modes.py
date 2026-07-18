@@ -20,6 +20,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_ver_main_symbol(name: str, class_name: str | None = None, extra_globals: dict | None = None):
+    """Compile one symbol from ver_main.py so its logic can be tested with stubs."""
+
     tree = ast.parse((REPO_ROOT / "ver_main.py").read_text(encoding="utf-8"))
     target = None
     if class_name is None:
@@ -50,6 +52,8 @@ def _load_ver_main_symbol(name: str, class_name: str | None = None, extra_global
 
 
 def _capture_config(target: dict, key: str):
+    """Return a callback that stores the latest config dict under ``key``."""
+
     def _capture(cfg):
         target[key] = dict(cfg)
 
