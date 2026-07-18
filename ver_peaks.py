@@ -94,7 +94,7 @@ def _legacy_peak_assignments(segment: np.ndarray, seg_times: np.ndarray) -> dict
         all_peak_indices = np.argsort(np.abs(segment))[-3:]
 
     # Rank by absolute amplitude, take top 3, then report them in time order.
-    ranked = sorted((int(i) for i in all_peak_indices), key=lambda i: abs(segment[i]), reverse=True)
+    ranked = sorted(all_peak_indices, key=lambda i: abs(segment[i]), reverse=True)
     top3_sorted = sorted(ranked[:3], key=lambda i: seg_times[i])
     peak_names = ["Peak-1", "Peak-2", "Peak-3"]
     return {
@@ -106,7 +106,7 @@ def _legacy_peak_assignments(segment: np.ndarray, seg_times: np.ndarray) -> dict
 def _dominant_opposite_neighbor_assignments(segment: np.ndarray) -> dict[str, int | None]:
     """Return Peak-1/2/3 as opposite-polarity neighbors around the dominant peak."""
 
-    candidate_indices = sorted({int(i) for i in _find_extrema_indices(segment)})
+    candidate_indices = sorted(set(_find_extrema_indices(segment)))
     dominant_idx = int(np.argmax(np.abs(segment)))
     if np.isclose(segment[dominant_idx], 0.0) and candidate_indices:
         dominant_idx = max(candidate_indices, key=lambda i: abs(segment[i]))

@@ -81,8 +81,8 @@ def prompt_analysis_complete_action(parent) -> str:
         "Back to Analysis keeps the current results so you can adjust filter or classifier "
         "settings and rerun the analysis."
     )
-    proceed_button = dialog.addButton("Proceed to Human Validation", QMessageBox.ButtonRole.AcceptRole)
-    back_button = dialog.addButton("Back to Analysis", QMessageBox.ButtonRole.ActionRole)
+    proceed_button = dialog.addButton("Proceed to Human Validation", QMessageBox.ButtonRole.YesRole)
+    back_button = dialog.addButton("Back to Analysis", QMessageBox.ButtonRole.NoRole)
     cancel_button = dialog.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
     dialog.setDefaultButton(proceed_button)
     dialog.exec()

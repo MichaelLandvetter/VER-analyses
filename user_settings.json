@@ -84,5 +84,8 @@
     },
     "METADATA_CONFIG": {
         "species": ""
+    },
+    "ML_LOGGER": {
+        "observer_id": ""
     }
 }
