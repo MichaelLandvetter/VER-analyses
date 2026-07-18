@@ -112,6 +112,8 @@ def test_detect_ver_peaks_uses_refreshed_cached_classifier_settings():
 
     refresh_classifier_cfg({"snr_threshold": 3.0, "peak_detection_mode": "legacy_top3"})
     first_run = detect_ver_peaks(epoch_avg, epoch_time_ms)
+    assert first_run["Peak-3"]["latency_ms"] == 120.0
+    assert first_run["Peak-1"]["above_threshold"] is False
 
     refresh_classifier_cfg(
         {
@@ -121,8 +123,6 @@ def test_detect_ver_peaks_uses_refreshed_cached_classifier_settings():
     )
     rerun = detect_ver_peaks(epoch_avg, epoch_time_ms)
 
-    assert first_run["Peak-3"]["latency_ms"] == 120.0
-    assert first_run["Peak-1"]["above_threshold"] is False
     assert rerun["Peak-3"]["latency_ms"] == 130.0
     assert rerun["Peak-1"]["above_threshold"] is True
 
@@ -241,7 +241,7 @@ def test_classifier_settings_save_updates_runtime_config_and_message(monkeypatch
     assert captured["cfg"]["peak_detection_mode"] == "dominant_opposite_neighbors"
     assert captured["message"] == (
         "Classifier settings saved.\n\n"
-        "Changes apply the next time you click Start. The current graph stays unchanged until then."
+        "Changes are queued for the next time you click Start. The current graph stays unchanged until then."
     )
 
 

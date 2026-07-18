@@ -625,7 +625,7 @@ class ClassifierSettingsTab(QWidget):
         QMessageBox.information(
             self,
             "Settings Saved",
-            "Classifier settings saved.\n\nChanges apply the next time you click Start. The current graph stays unchanged until then."
+            "Classifier settings saved.\n\nChanges are queued for the next time you click Start. The current graph stays unchanged until then."
         )
 
 class VERMainWindow(QMainWindow):
