@@ -73,6 +73,18 @@ PEAK_DETECTION_MODE_OPTIONS = {
 }
 
 
+def _refresh_runtime_classifier_settings(classifier_cfg: dict | None) -> None:
+    """Refresh the live classifier/peak config used by the next analysis run."""
+
+    cfg = classifier_cfg or {}
+
+    import ver_classifier
+    import ver_peaks
+
+    ver_classifier.refresh_classifier_cfg(cfg)
+    ver_peaks.refresh_classifier_cfg(cfg)
+
+
 def _clamp_artifact_threshold(threshold_uv: float) -> float:
     """Clamp a candidate threshold to the minimum supported positive value."""
 
@@ -609,16 +621,12 @@ class ClassifierSettingsTab(QWidget):
         self.sm.settings["CLASSIFIER_CONFIG"] = self.cfg
         self.sm.save_settings()
 
-        # Refresh module-level caches so the new config takes effect immediately.
-        import ver_classifier
-        import ver_peaks
-        ver_classifier.refresh_classifier_cfg(self.cfg)
-        ver_peaks.refresh_classifier_cfg(self.cfg)
+        _refresh_runtime_classifier_settings(self.cfg)
 
         QMessageBox.information(
             self,
             "Settings Saved",
-            "Settings applied! Settings saved to user_settings.json.\n\nRestart the application for all changes to take effect."
+            "Classifier settings saved.\n\nChanges apply the next time you click Start. The current graph stays unchanged until then."
         )
 
 class VERMainWindow(QMainWindow):
@@ -1216,6 +1224,7 @@ class VERMainWindow(QMainWindow):
     def start_acquisition(self):
         current_speed = self._get_speed_factor()
         self._sync_artifact_settings_from_ui()
+        _refresh_runtime_classifier_settings(self.settings_manager.settings.get("CLASSIFIER_CONFIG", {}))
 
         # ---> NEW LINES: Tell the scope's filter which mode to use! <---
         if hasattr(self, 'scope') and hasattr(self.scope, 'bandpass_filter'):
@@ -1345,13 +1354,7 @@ class VERMainWindow(QMainWindow):
         # Save to JSON and apply to live config!
         self.settings_manager.save_settings(new_settings)
 
-        # Refresh the module-level caches in classifier/peaks so that the
-        # updated config takes effect without requiring a restart.
-        new_classifier_cfg = new_settings.get("CLASSIFIER_CONFIG", {})
-        import ver_classifier
-        import ver_peaks
-        ver_classifier.refresh_classifier_cfg(new_classifier_cfg)
-        ver_peaks.refresh_classifier_cfg(new_classifier_cfg)
+        _refresh_runtime_classifier_settings(new_settings.get("CLASSIFIER_CONFIG", {}))
         
         QMessageBox.information(self, "Settings Saved", "Settings saved successfully! \n\n You may need to click 'Reset' or analyze a new file for changes to take effect.")
 
