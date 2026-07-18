@@ -76,7 +76,11 @@ PEAK_DETECTION_MODE_OPTIONS = {
 
 
 def _refresh_runtime_classifier_settings(classifier_cfg: dict | None) -> None:
-    """Refresh the live classifier/peak config used by the next analysis run."""
+    """Refresh the live classifier/peak config used by the next analysis run.
+
+    When ``classifier_cfg`` is ``None``, an empty config is applied so downstream
+    code falls back to its existing defaults.
+    """
 
     cfg = classifier_cfg or {}
 
