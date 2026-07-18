@@ -12,6 +12,8 @@ import ver_config
 log = logging.getLogger(__name__)
 
 MIN_NOISE_RMS = 1e-10
+DEFAULT_PEAK_DETECTION_MODE = "legacy_top3"
+DOMINANT_OPPOSITE_NEIGHBORS_MODE = "dominant_opposite_neighbors"
 
 # Module-level settings cache — loaded once on first use and replaced when
 # an explicit ``classifier_cfg`` dict is passed in (e.g. after user saves
@@ -66,15 +68,107 @@ VERPeaksResult = TypedDict(
 )
 
 
+def _find_extrema_indices(segment: np.ndarray) -> np.ndarray:
+    """Return robust positive and negative extrema indices for a waveform segment."""
+
+    signal_range = float(np.max(segment) - np.min(segment))
+    # Require peaks to stand out by at least 10% of segment range.
+    # 1e-10 prevents zero-prominence calls for near-flat numeric input; it has no physiological meaning.
+    min_prominence = max(0.1 * signal_range, 1e-10)
+    # Keep detected peaks at least ~20ms apart at 250Hz (5 samples).
+    min_distance = 5
+
+    pos_peaks, _ = find_peaks(segment, prominence=min_prominence, distance=min_distance)
+    neg_peaks, _ = find_peaks(-segment, prominence=min_prominence, distance=min_distance)
+    return np.concatenate([pos_peaks, neg_peaks])
+
+
+def _resolve_peak_detection_mode(mode: str | None) -> str:
+    """Return a supported peak-detection mode, falling back to the legacy mode."""
+
+    if mode == DOMINANT_OPPOSITE_NEIGHBORS_MODE:
+        return DOMINANT_OPPOSITE_NEIGHBORS_MODE
+    if mode is not None and mode not in (
+        DEFAULT_PEAK_DETECTION_MODE,
+        DOMINANT_OPPOSITE_NEIGHBORS_MODE,
+    ):
+        log.warning(
+            "Unknown peak_detection_mode %r; falling back to %s",
+            mode,
+            DEFAULT_PEAK_DETECTION_MODE,
+        )
+    return DEFAULT_PEAK_DETECTION_MODE
+
+
+def _legacy_peak_assignments(segment: np.ndarray, seg_times: np.ndarray) -> dict[str, int | None]:
+    """Return the historical Peak-1/2/3 assignments."""
+
+    all_peak_indices = _find_extrema_indices(segment)
+    if len(all_peak_indices) == 0:
+        # No local extrema found (e.g. flat signal) — fall back to the samples with the
+        # largest absolute values. These may not be strict local maxima, but they represent
+        # the most prominent features in a signal with no clear peaks.
+        all_peak_indices = np.argsort(np.abs(segment))[-3:]
+
+    # Rank by absolute amplitude, take top 3, then report them in time order.
+    ranked = sorted(all_peak_indices, key=lambda i: abs(segment[i]), reverse=True)
+    top3_sorted = sorted(ranked[:3], key=lambda i: seg_times[i])
+    peak_names = ["Peak-1", "Peak-2", "Peak-3"]
+    return {
+        name: top3_sorted[i] if i < len(top3_sorted) else None
+        for i, name in enumerate(peak_names)
+    }
+
+
+def _dominant_opposite_neighbor_assignments(segment: np.ndarray) -> dict[str, int | None]:
+    """Return Peak-1/2/3 as opposite-polarity neighbors around the dominant peak."""
+
+    candidate_indices = sorted(set(_find_extrema_indices(segment)))
+    # The new mode is defined around the dominant absolute-amplitude sample, not just the
+    # strongest previously detected extremum, so inspect the full post-stimulus segment here.
+    dominant_idx = int(np.argmax(np.abs(segment)))
+    dominant_amp = float(segment[dominant_idx])
+    dominant_sign = np.sign(dominant_amp)
+    if dominant_sign == 0:
+        return {
+            "Peak-1": None,
+            "Peak-2": dominant_idx,
+            "Peak-3": None,
+        }
+
+    def is_opposite(value: float) -> bool:
+        return bool(value * dominant_sign < 0)
+
+    before = None
+    after = None
+    for idx in candidate_indices:
+        if not is_opposite(segment[idx]):
+            continue
+        if idx < dominant_idx:
+            before = idx
+        elif idx > dominant_idx:
+            after = idx
+            break
+
+    return {
+        "Peak-1": before,
+        "Peak-2": dominant_idx,
+        "Peak-3": after,
+    }
+
+
 def detect_ver_peaks(
     epoch_avg: np.ndarray,
     epoch_time_ms: np.ndarray,
     classifier_cfg: dict | None = None,
 ) -> VERPeaksResult:
     """
-    Detect the three largest peaks (any polarity) between 0 and 200ms post-stimulus.
-    Uses baseline correction and prominence/distance constraints for robustness.
-    Returns Peak-1, Peak-2, Peak-3 sorted by latency (earliest first).
+    Detect VER peaks between 0 and 200ms post-stimulus.
+
+    Default mode preserves the historical behavior: find robust local maxima/minima,
+    rank them by absolute amplitude, take the top three, then return them in latency order.
+    Optional mode returns the dominant absolute-amplitude peak as Peak-2 plus the nearest
+    opposite-polarity extrema before/after it as Peak-1/Peak-3.
 
     Works for any species regardless of polarity convention.
 
@@ -96,6 +190,7 @@ def detect_ver_peaks(
     """
     cfg = _get_classifier_cfg(classifier_cfg)
     snr_threshold = cfg.get("snr_threshold", 2.0)
+    peak_detection_mode = _resolve_peak_detection_mode(cfg.get("peak_detection_mode"))
     def _empty_peak() -> VERPeak:
         return {
             "latency_ms": float("nan"),
@@ -132,31 +227,10 @@ def detect_ver_peaks(
 
     segment = epoch_avg[mask] - baseline
     seg_times = epoch_time_ms[mask]
-    signal_range = float(np.max(segment) - np.min(segment))
-    # Require peaks to stand out by at least 10% of segment range.
-    # 1e-10 prevents zero-prominence calls for near-flat numeric input; it has no physiological meaning.
-    min_prominence = max(0.1 * signal_range, 1e-10)
-    # Keep detected peaks at least ~20ms apart at 250Hz (5 samples).
-    min_distance = 5
-
-    # Find robust local maxima and minima
-    pos_peaks, _ = find_peaks(segment, prominence=min_prominence, distance=min_distance)
-    neg_peaks, _ = find_peaks(-segment, prominence=min_prominence, distance=min_distance)
-
-    all_peak_indices = np.concatenate([pos_peaks, neg_peaks])
-
-    if len(all_peak_indices) == 0:
-        # No local extrema found (e.g. flat signal) — fall back to the samples with the
-        # largest absolute values. These may not be strict local maxima, but they represent
-        # the most prominent features in a signal with no clear peaks.
-        all_peak_indices = np.argsort(np.abs(segment))[-3:]
-
-    # Rank by absolute amplitude, take top 3
-    ranked = sorted(all_peak_indices, key=lambda i: abs(segment[i]), reverse=True)
-    top3 = ranked[:3]
-
-    # Sort by latency (time order)
-    top3_sorted = sorted(top3, key=lambda i: seg_times[i])
+    if peak_detection_mode == DOMINANT_OPPOSITE_NEIGHBORS_MODE:
+        peak_assignments = _dominant_opposite_neighbor_assignments(segment)
+    else:
+        peak_assignments = _legacy_peak_assignments(segment, seg_times)
 
     result: VERPeaksResult = {
         "Peak-1": _empty_peak(),
@@ -166,9 +240,9 @@ def detect_ver_peaks(
         "noise_rms": noise_rms,
     }
     peak_names = ['Peak-1', 'Peak-2', 'Peak-3']
-    for i, name in enumerate(peak_names):
-        if i < len(top3_sorted):
-            idx = top3_sorted[i]
+    for name in peak_names:
+        idx = peak_assignments.get(name)
+        if idx is not None:
             result[name] = {
                 "latency_ms": float(seg_times[idx]),
                 "amplitude": float(segment[idx]),
