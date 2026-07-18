@@ -12,6 +12,8 @@ from pathlib import Path
 
 import numpy as np
 import pyqtgraph as pg
+import ver_classifier
+import ver_peaks as ver_peaks_module
 
 if getattr(sys, 'frozen', False):
     import pyi_splash
@@ -78,11 +80,8 @@ def _refresh_runtime_classifier_settings(classifier_cfg: dict | None) -> None:
 
     cfg = classifier_cfg or {}
 
-    import ver_classifier
-    import ver_peaks
-
     ver_classifier.refresh_classifier_cfg(cfg)
-    ver_peaks.refresh_classifier_cfg(cfg)
+    ver_peaks_module.refresh_classifier_cfg(cfg)
 
 
 def _clamp_artifact_threshold(threshold_uv: float) -> float:
