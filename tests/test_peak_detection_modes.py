@@ -22,10 +22,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 def _load_ver_main_symbol(name: str, class_name: str | None = None, extra_globals: dict | None = None):
     """Compile one symbol from ver_main.py for isolated testing.
 
-    Parameters let tests select either a module-level function or a method from
-    ``class_name`` and inject stubbed globals through ``extra_globals``.
+    Args:
+        name: Function or method name to extract.
+        class_name: Optional class name when extracting a method.
+        extra_globals: Optional globals injected while compiling the symbol.
 
-    Returns the compiled callable.
+    Returns:
+        The compiled callable.
     """
 
     tree = ast.parse((REPO_ROOT / "ver_main.py").read_text(encoding="utf-8"))
@@ -58,7 +61,15 @@ def _load_ver_main_symbol(name: str, class_name: str | None = None, extra_global
 
 
 def _capture_config(target: dict, key: str):
-    """Return a callback that stores a copied ``cfg`` argument under ``key``."""
+    """Build a callback that stores a copied config dict.
+
+    Args:
+        target: Mapping where captured configs are stored.
+        key: Key used to store the copied config.
+
+    Returns:
+        A callback accepting ``cfg`` and storing ``dict(cfg)`` under ``key``.
+    """
 
     def _capture(cfg):
         target[key] = dict(cfg)
