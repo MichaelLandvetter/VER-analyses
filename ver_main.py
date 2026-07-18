@@ -104,7 +104,7 @@ def prompt_analysis_complete_action(parent) -> str:
     for button, action in button_actions:
         if clicked_button == button:
             return action
-    log.warning("Analysis complete dialog closed without a recognized button selection.")
+    log.warning("Analysis complete dialog closed without a recognized button selection; treating as cancel.")
     return normalize_analysis_complete_action(None)
 
 def auto_detect_file_format(filepath: str) -> str | None:
@@ -1449,7 +1449,12 @@ class VERMainWindow(QMainWindow):
             if self.scope.session_averages:
                 next_action = prompt_analysis_complete_action(self)
                 if should_proceed_to_human_validation(next_action):
+                    log.info("End-of-analysis dialog: proceeding to human validation.")
                     self.save_report()
+                elif next_action == BACK_TO_ANALYSIS:
+                    log.info("End-of-analysis dialog: returning to analysis for further adjustments.")
+                else:
+                    log.info("End-of-analysis dialog: validation canceled by user.")
             else:
                 next_action = None
                 

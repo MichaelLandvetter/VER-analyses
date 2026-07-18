@@ -83,7 +83,7 @@ def _find_extrema_indices(segment: np.ndarray) -> np.ndarray:
     return np.concatenate([pos_peaks, neg_peaks])
 
 
-def _normalize_peak_detection_mode(mode: str | None) -> str:
+def _resolve_peak_detection_mode(mode: str | None) -> str:
     """Return a supported peak-detection mode, falling back to the legacy mode."""
 
     if mode == DOMINANT_OPPOSITE_NEIGHBORS_MODE:
@@ -118,6 +118,12 @@ def _dominant_opposite_neighbor_assignments(segment: np.ndarray) -> dict[str, in
     dominant_idx = int(np.argmax(np.abs(segment)))
     dominant_amp = float(segment[dominant_idx])
     dominant_sign = np.sign(dominant_amp)
+    if dominant_sign == 0:
+        return {
+            "Peak-1": None,
+            "Peak-2": dominant_idx,
+            "Peak-3": None,
+        }
 
     def is_opposite(value: float) -> bool:
         return bool(dominant_sign and (value * dominant_sign < 0))
@@ -174,7 +180,7 @@ def detect_ver_peaks(
     cfg = _get_classifier_cfg(classifier_cfg)
     snr_threshold = cfg.get("snr_threshold", 2.0)
     raw_peak_detection_mode = cfg.get("peak_detection_mode")
-    peak_detection_mode = _normalize_peak_detection_mode(raw_peak_detection_mode)
+    peak_detection_mode = _resolve_peak_detection_mode(raw_peak_detection_mode)
     def _empty_peak() -> VERPeak:
         return {
             "latency_ms": float("nan"),
