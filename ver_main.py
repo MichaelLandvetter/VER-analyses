@@ -80,7 +80,7 @@ def _clamp_artifact_threshold(threshold_uv: float) -> float:
 
 
 def prompt_analysis_complete_action(parent) -> str:
-    """Ask whether to proceed to validation, return to analysis, or cancel."""
+    """Ask whether to proceed to validation or return to analysis."""
 
     dialog = QMessageBox(parent)
     dialog.setWindowTitle("Analysis Complete")
@@ -91,7 +91,6 @@ def prompt_analysis_complete_action(parent) -> str:
     )
     proceed_button = dialog.addButton("Proceed to Human Validation", QMessageBox.ButtonRole.YesRole)
     back_button = dialog.addButton("Back to Analysis", QMessageBox.ButtonRole.NoRole)
-    cancel_button = dialog.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
     dialog.setDefaultButton(proceed_button)
     dialog.exec()
 
@@ -99,14 +98,13 @@ def prompt_analysis_complete_action(parent) -> str:
     button_actions = (
         (proceed_button, PROCEED_TO_VALIDATION),
         (back_button, BACK_TO_ANALYSIS),
-        (cancel_button, CANCEL_ANALYSIS),
     )
     for button, action in button_actions:
         if clicked_button == button:
             return action
-    log.info("Analysis complete dialog closed without a recognized button selection; treating as cancel.")
-    return CANCEL_ANALYSIS
 
+    log.info("Analysis complete dialog closed without a recognized button selection; treating as back to analysis.")
+    return BACK_TO_ANALYSIS
 def auto_detect_file_format(filepath: str) -> str | None:
     """
     Reads the first data line of the file and determines the format.
