@@ -61,7 +61,8 @@ class SettingsManager:
                 "ipi_min": 20.0,
                 "ipi_max": 85.0,
                 "p3_p2_max": 120.0,
-                "snr_threshold": 2.0
+                "snr_threshold": 2.0,
+                "peak_detection_mode": "legacy_top3"
             },
             "SERIAL_CONFIG": {
                 "port": "COM4",

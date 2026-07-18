@@ -100,6 +100,22 @@ Files are saved as:
 - `<input-file-stem>.png`
 - `<input-file-stem>.pdf`
 
+## VER Peak Detection
+
+- Initial VER Evolution peak picks are computed in `ver_peaks.py` by `detect_ver_peaks()`.
+- Default mode (`CLASSIFIER_CONFIG.peak_detection_mode = "legacy_top3"`) preserves the current behavior: robust local maxima/minima are found in the 0-200 ms window, ranked by absolute amplitude, and the top three are reported in latency order.
+- Optional mode (`"dominant_opposite_neighbors"`) keeps the dominant absolute-amplitude peak as `Peak-2` and chooses the nearest opposite-polarity extrema before and after it as `Peak-1` and `Peak-3`.
+- Marker polarity is shown by marker direction (`^`/`v` in reports, up/down triangles in the live display). Marker fill is controlled by `peak["above_threshold"]`: filled markers are at or above the SNR threshold, hollow markers are below threshold.
+- The SNR flag used for marker fill/hollow is calculated from `abs(amplitude) / noise_rms` in `detect_ver_peaks()`. The live/default threshold comes from `CLASSIFIER_CONFIG.snr_threshold` (default `2.0`) in `user_settings.json` / `SettingsManager`, while `PEAK_CONFIG.BASELINE_START_MS` and `PEAK_CONFIG.BASELINE_END_MS` define the noise window used for that SNR calculation.
+
+## End of Analysis Workflow
+
+When acquisition reaches the end of the file, the completion dialog now offers three explicit choices:
+
+- **Proceed to Human Validation** — generate the draft report and open the validation workflow.
+- **Back to Analysis** — keep the current results on screen so you can adjust filter settings or classifier settings (including SNR threshold and peak detection mode) and rerun.
+- **Cancel** — dismiss the completion dialog without forcing validation.
+
 ## Artifact Exclusion Criteria
 
 Each flash-locked epoch is tested against a symmetric amplitude threshold before being included in the running average. If any sample in the filtered epoch exceeds ±threshold, the epoch is **rejected** and excluded from the session average.

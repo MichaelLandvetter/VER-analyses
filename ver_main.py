@@ -59,12 +59,42 @@ from ver_preflight import suggest_exclusion_from_file
 
 log = logging.getLogger(__name__)
 ARTIFACT_THRESHOLD_MIN_UV = 0.0001
+PEAK_DETECTION_MODE_OPTIONS = {
+    "legacy_top3": "Legacy: top 3 extrema by amplitude",
+    "dominant_opposite_neighbors": "Dominant peak + opposite-polarity neighbors",
+}
 
 
 def _clamp_artifact_threshold(threshold_uv: float) -> float:
     """Clamp a candidate threshold to the minimum supported positive value."""
 
     return max(float(threshold_uv), ARTIFACT_THRESHOLD_MIN_UV)
+
+
+def prompt_analysis_complete_action(parent) -> str:
+    """Ask whether to proceed to validation, return to analysis, or cancel."""
+
+    dialog = QMessageBox(parent)
+    dialog.setWindowTitle("Analysis Complete")
+    dialog.setText("Reached the end of the analysis. What would you like to do next?")
+    dialog.setInformativeText(
+        "Back to Analysis keeps the current results so you can adjust filter or classifier "
+        "settings and rerun the analysis."
+    )
+    proceed_button = dialog.addButton("Proceed to Human Validation", QMessageBox.ButtonRole.AcceptRole)
+    back_button = dialog.addButton("Back to Analysis", QMessageBox.ButtonRole.ActionRole)
+    cancel_button = dialog.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+    dialog.setDefaultButton(proceed_button)
+    dialog.exec()
+
+    clicked_button = dialog.clickedButton()
+    if clicked_button is proceed_button:
+        return "proceed_to_validation"
+    if clicked_button is back_button:
+        return "back_to_analysis"
+    if clicked_button is cancel_button:
+        return "cancel"
+    return "cancel"
 
 def auto_detect_file_format(filepath: str) -> str | None:
     """
@@ -484,6 +514,7 @@ class ClassifierSettingsTab(QWidget):
         main_layout = QVBoxLayout()
         self.cfg = self.sm.settings.get("CLASSIFIER_CONFIG", {})
         self.inputs = {}
+        self.peak_detection_mode_combo = QComboBox()
 
         # 1. Define groups: (Group Title, [(Key, Label, Tooltip, Decimals)])
         groups = [
@@ -536,6 +567,20 @@ class ClassifierSettingsTab(QWidget):
             group_box.setLayout(group_layout)
             main_layout.addWidget(group_box)
 
+        peak_mode_box = QGroupBox("Peak detection used for initial peak picks")
+        peak_mode_layout = QFormLayout()
+        for value, label in PEAK_DETECTION_MODE_OPTIONS.items():
+            self.peak_detection_mode_combo.addItem(label, value)
+        selected_mode = str(self.cfg.get("peak_detection_mode", "legacy_top3"))
+        selected_index = self.peak_detection_mode_combo.findData(selected_mode)
+        self.peak_detection_mode_combo.setCurrentIndex(selected_index if selected_index >= 0 else 0)
+        self.peak_detection_mode_combo.setToolTip(
+            "Controls how Peak-1/2/3 are seeded before human validation."
+        )
+        peak_mode_layout.addRow(QLabel("Mode"), self.peak_detection_mode_combo)
+        peak_mode_box.setLayout(peak_mode_layout)
+        main_layout.addWidget(peak_mode_box)
+
         # 3. Save Button
         save_btn = QPushButton("Save Classifier Settings")
         save_btn.clicked.connect(self.save_settings)
@@ -550,6 +595,7 @@ class ClassifierSettingsTab(QWidget):
                 self.cfg[key] = spin.value() * 1e-7
             else:
                 self.cfg[key] = spin.value()
+        self.cfg["peak_detection_mode"] = self.peak_detection_mode_combo.currentData()
 
         self.sm.settings["CLASSIFIER_CONFIG"] = self.cfg
         self.sm.save_settings()
@@ -1377,6 +1423,7 @@ class VERMainWindow(QMainWindow):
     def _handle_eof(self):
             self.max_speed_warning.hide() # Force hide here
             self.stop_acquisition()
+            status_message = "End of file reached"
             
             partial_session = self.scope.save_partial_session(EPOCH_CONFIG["flashes_per_session"] // 2)
             if partial_session is not None:
@@ -1390,17 +1437,15 @@ class VERMainWindow(QMainWindow):
                 )
                 
             if self.scope.session_averages:
-                # --- NEW UPDATED POPUP LOGIC ---
-                QMessageBox.information(
-                    self,
-                    "Analysis Complete",
-                    "Reached the end of the analysis. Click OK to proceed to human validation."
-                )
-                # Automatically proceed to save/validate
-                self.save_report()
-                # -------------------------------
+                next_action = prompt_analysis_complete_action(self)
+                if next_action == "proceed_to_validation":
+                    self.save_report()
+                elif next_action == "back_to_analysis":
+                    status_message = "Analysis complete. Adjust settings and rerun when ready."
+                else:
+                    status_message = "Analysis complete."
                 
-            self.display.set_status("End of file reached")
+            self.display.set_status(status_message)
             self.start_btn.setText("Start")
             self._shutdown_worker()
             self.max_speed_warning.hide()
