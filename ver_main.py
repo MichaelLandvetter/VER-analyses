@@ -96,12 +96,14 @@ def prompt_analysis_complete_action(parent) -> str:
     dialog.exec()
 
     clicked_button = dialog.clickedButton()
-    if clicked_button is proceed_button:
-        return PROCEED_TO_VALIDATION
-    if clicked_button is back_button:
-        return BACK_TO_ANALYSIS
-    if clicked_button is cancel_button:
-        return CANCEL_ANALYSIS
+    button_actions = (
+        (proceed_button, PROCEED_TO_VALIDATION),
+        (back_button, BACK_TO_ANALYSIS),
+        (cancel_button, CANCEL_ANALYSIS),
+    )
+    for button, action in button_actions:
+        if clicked_button == button:
+            return action
     log.warning("Analysis complete dialog closed without a recognized button selection.")
     return normalize_analysis_complete_action(None)
 

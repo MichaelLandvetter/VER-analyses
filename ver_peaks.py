@@ -122,8 +122,16 @@ def _dominant_opposite_neighbor_assignments(segment: np.ndarray) -> dict[str, in
     def is_opposite(value: float) -> bool:
         return bool(dominant_sign and (value * dominant_sign < 0))
 
-    before = next((idx for idx in reversed(candidate_indices) if idx < dominant_idx and is_opposite(segment[idx])), None)
-    after = next((idx for idx in candidate_indices if idx > dominant_idx and is_opposite(segment[idx])), None)
+    before = None
+    after = None
+    for idx in candidate_indices:
+        if not is_opposite(segment[idx]):
+            continue
+        if idx < dominant_idx:
+            before = idx
+        elif idx > dominant_idx:
+            after = idx
+            break
 
     return {
         "Peak-1": before,
