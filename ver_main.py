@@ -56,6 +56,14 @@ from ver_downsample import downsample_labchart_file
 from ver_settings import SettingsManager
 from ver_ml_logger import launch_ml_logger
 from ver_preflight import suggest_exclusion_from_file
+from ver_analysis_flow import (
+    BACK_TO_ANALYSIS,
+    CANCEL_ANALYSIS,
+    PROCEED_TO_VALIDATION,
+    normalize_analysis_complete_action,
+    should_proceed_to_human_validation,
+    status_message_for_analysis_complete_action,
+)
 
 log = logging.getLogger(__name__)
 ARTIFACT_THRESHOLD_MIN_UV = 0.0001
@@ -89,12 +97,12 @@ def prompt_analysis_complete_action(parent) -> str:
 
     clicked_button = dialog.clickedButton()
     if clicked_button is proceed_button:
-        return "proceed_to_validation"
+        return PROCEED_TO_VALIDATION
     if clicked_button is back_button:
-        return "back_to_analysis"
+        return BACK_TO_ANALYSIS
     if clicked_button is cancel_button:
-        return "cancel"
-    return "cancel"
+        return CANCEL_ANALYSIS
+    return normalize_analysis_complete_action(None)
 
 def auto_detect_file_format(filepath: str) -> str | None:
     """
@@ -1423,7 +1431,6 @@ class VERMainWindow(QMainWindow):
     def _handle_eof(self):
             self.max_speed_warning.hide() # Force hide here
             self.stop_acquisition()
-            status_message = "End of file reached"
             
             partial_session = self.scope.save_partial_session(EPOCH_CONFIG["flashes_per_session"] // 2)
             if partial_session is not None:
@@ -1438,14 +1445,17 @@ class VERMainWindow(QMainWindow):
                 
             if self.scope.session_averages:
                 next_action = prompt_analysis_complete_action(self)
-                if next_action == "proceed_to_validation":
+                if should_proceed_to_human_validation(next_action):
                     self.save_report()
-                elif next_action == "back_to_analysis":
-                    status_message = "Analysis complete. Adjust settings and rerun when ready."
-                else:
-                    status_message = "Analysis complete."
+            else:
+                next_action = None
                 
-            self.display.set_status(status_message)
+            self.display.set_status(
+                status_message_for_analysis_complete_action(
+                    next_action,
+                    has_session_averages=bool(self.scope.session_averages),
+                )
+            )
             self.start_btn.setText("Start")
             self._shutdown_worker()
             self.max_speed_warning.hide()

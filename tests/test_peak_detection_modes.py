@@ -1,8 +1,15 @@
 import json
-from pathlib import Path
 
 import numpy as np
 
+from ver_analysis_flow import (
+    BACK_TO_ANALYSIS,
+    CANCEL_ANALYSIS,
+    PROCEED_TO_VALIDATION,
+    normalize_analysis_complete_action,
+    should_proceed_to_human_validation,
+    status_message_for_analysis_complete_action,
+)
 from ver_peaks import detect_ver_peaks
 from ver_settings import SettingsManager
 
@@ -64,15 +71,29 @@ def test_settings_manager_backfills_peak_detection_mode(monkeypatch, tmp_path):
     assert reloaded["CLASSIFIER_CONFIG"]["peak_detection_mode"] == "legacy_top3"
 
 
-def test_ver_main_source_includes_three_way_completion_dialog():
-    src = Path("ver_main.py").read_text(encoding="utf-8")
+def test_analysis_complete_action_helpers_cover_all_choices():
+    assert normalize_analysis_complete_action(PROCEED_TO_VALIDATION) == PROCEED_TO_VALIDATION
+    assert normalize_analysis_complete_action(BACK_TO_ANALYSIS) == BACK_TO_ANALYSIS
+    assert normalize_analysis_complete_action("unexpected") == CANCEL_ANALYSIS
+    assert should_proceed_to_human_validation(PROCEED_TO_VALIDATION) is True
+    assert should_proceed_to_human_validation(BACK_TO_ANALYSIS) is False
+    assert should_proceed_to_human_validation(None) is False
 
-    assert 'def prompt_analysis_complete_action(parent) -> str:' in src
-    assert '"Proceed to Human Validation"' in src
-    assert '"Back to Analysis"' in src
-    assert '"Cancel"' in src
-    assert 'next_action = prompt_analysis_complete_action(self)' in src
-    assert 'if next_action == "proceed_to_validation":' in src
-    assert "self.save_report()" in src
-    assert 'elif next_action == "back_to_analysis":' in src
-    assert 'status_message = "Analysis complete. Adjust settings and rerun when ready."' in src
+
+def test_analysis_complete_status_messages_match_choice():
+    assert status_message_for_analysis_complete_action(
+        PROCEED_TO_VALIDATION,
+        has_session_averages=True,
+    ) == "End of file reached"
+    assert status_message_for_analysis_complete_action(
+        BACK_TO_ANALYSIS,
+        has_session_averages=True,
+    ) == "Analysis complete. Adjust settings and rerun when ready."
+    assert status_message_for_analysis_complete_action(
+        CANCEL_ANALYSIS,
+        has_session_averages=True,
+    ) == "Analysis complete."
+    assert status_message_for_analysis_complete_action(
+        None,
+        has_session_averages=False,
+    ) == "End of file reached"

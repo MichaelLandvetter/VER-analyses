@@ -108,16 +108,11 @@ def _dominant_opposite_neighbor_assignments(segment: np.ndarray) -> dict[str, in
 
     candidate_indices = sorted(set(_find_extrema_indices(segment)))
     dominant_idx = int(np.argmax(np.abs(segment)))
-    if np.isclose(segment[dominant_idx], 0.0) and candidate_indices:
-        dominant_idx = max(candidate_indices, key=lambda i: abs(segment[i]))
-
     dominant_amp = float(segment[dominant_idx])
-    if dominant_amp > 0:
-        is_opposite = lambda value: value < 0
-    elif dominant_amp < 0:
-        is_opposite = lambda value: value > 0
-    else:
-        is_opposite = lambda value: False
+    dominant_sign = np.sign(dominant_amp)
+
+    def is_opposite(value: float) -> bool:
+        return bool(dominant_sign and (value * dominant_sign < 0))
 
     before = next((idx for idx in reversed(candidate_indices) if idx < dominant_idx and is_opposite(segment[idx])), None)
     after = next((idx for idx in candidate_indices if idx > dominant_idx and is_opposite(segment[idx])), None)
