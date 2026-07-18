@@ -88,7 +88,10 @@ def _resolve_peak_detection_mode(mode: str | None) -> str:
 
     if mode == DOMINANT_OPPOSITE_NEIGHBORS_MODE:
         return DOMINANT_OPPOSITE_NEIGHBORS_MODE
-    if mode not in (None, DEFAULT_PEAK_DETECTION_MODE):
+    if mode is not None and mode not in (
+        DEFAULT_PEAK_DETECTION_MODE,
+        DOMINANT_OPPOSITE_NEIGHBORS_MODE,
+    ):
         log.warning(
             "Unknown peak_detection_mode %r; falling back to %s",
             mode,
@@ -121,6 +124,8 @@ def _dominant_opposite_neighbor_assignments(segment: np.ndarray) -> dict[str, in
     """Return Peak-1/2/3 as opposite-polarity neighbors around the dominant peak."""
 
     candidate_indices = sorted(set(_find_extrema_indices(segment)))
+    # The new mode is defined around the dominant absolute-amplitude sample, not just the
+    # strongest previously detected extremum, so inspect the full post-stimulus segment here.
     dominant_idx = int(np.argmax(np.abs(segment)))
     dominant_amp = float(segment[dominant_idx])
     dominant_sign = np.sign(dominant_amp)
