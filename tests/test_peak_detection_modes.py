@@ -49,6 +49,13 @@ def _load_ver_main_symbol(name: str, class_name: str | None = None, extra_global
     return namespace[name]
 
 
+def _capture_config(target: dict, key: str):
+    def _capture(cfg):
+        target[key] = dict(cfg)
+
+    return _capture
+
+
 def _epoch_with_peaks():
     epoch_time_ms = np.arange(-100.0, 201.0, 1.0)
     epoch_avg = np.zeros_like(epoch_time_ms, dtype=float)
@@ -164,11 +171,11 @@ def test_refresh_runtime_classifier_settings_updates_both_modules():
     helper = _load_ver_main_symbol(
         "_refresh_runtime_classifier_settings",
         extra_globals={
-            "ver_classifier_module": SimpleNamespace(
-                refresh_classifier_cfg=lambda cfg: captured.setdefault("classifier", dict(cfg))
+            "ver_classifier": SimpleNamespace(
+                refresh_classifier_cfg=_capture_config(captured, "classifier")
             ),
-            "ver_peaks_module": SimpleNamespace(
-                refresh_classifier_cfg=lambda cfg: captured.setdefault("peaks", dict(cfg))
+            "ver_peaks": SimpleNamespace(
+                refresh_classifier_cfg=_capture_config(captured, "peaks")
             ),
         },
     )
@@ -206,11 +213,9 @@ def test_classifier_settings_save_updates_runtime_config_and_message(monkeypatch
         "save_settings",
         class_name="ClassifierSettingsTab",
         extra_globals={
-            "_refresh_runtime_classifier_settings": lambda refreshed_cfg: captured.setdefault(
-                "cfg", dict(refreshed_cfg)
-            ),
+            "_refresh_runtime_classifier_settings": _capture_config(captured, "cfg"),
             "QMessageBox": SimpleNamespace(
-                information=lambda *args: captured.setdefault("message", args[2])
+                information=lambda *args: captured.__setitem__("message", args[2])
             ),
         },
     )
@@ -246,7 +251,7 @@ def test_start_acquisition_refreshes_live_classifier_settings_before_rerun():
         "start_acquisition",
         class_name="VERMainWindow",
         extra_globals={
-            "_refresh_runtime_classifier_settings": lambda cfg: captured.setdefault("cfg", dict(cfg)),
+            "_refresh_runtime_classifier_settings": _capture_config(captured, "cfg"),
             "QMessageBox": SimpleNamespace(
                 StandardButton=SimpleNamespace(Yes=1, No=2),
                 question=lambda *args, **kwargs: 1,
