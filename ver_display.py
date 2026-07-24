@@ -9,11 +9,36 @@ from typing import List, Optional
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QTransform
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from ver_config import ACQ_CONFIG, DISPLAY_CONFIG, EPOCH_CONFIG
+
+# Qt's QWIDGETSIZE_MAX (16 777 215) used to effectively remove size constraints
+# from QGraphicsGridLayout columns/rows when restoring the normal layout.
+_LAYOUT_UNCONSTRAINED = 16_777_215.0
+
+_RAW_TITLE_NORMAL = "Raw + Filtered EEG  \u00b7 double-click to enlarge"
+_RAW_TITLE_FOCUSED = "Raw + Filtered EEG  \u00b7 double-click to restore"
+
+
+class _FocusableViewBox(pg.ViewBox):
+    """ViewBox that emits *sigDoubleClicked* on a left-button double-click.
+
+    PyQtGraph routes physical double-clicks through :py:meth:`mouseClickEvent`
+    (with ``ev.double() == True``), so that hook is used rather than the raw
+    Qt ``mouseDoubleClickEvent``.
+    """
+
+    sigDoubleClicked = pyqtSignal()
+
+    def mouseClickEvent(self, ev):
+        if ev.double() and ev.button() == Qt.MouseButton.LeftButton:
+            ev.accept()
+            self.sigDoubleClicked.emit()
+        else:
+            super().mouseClickEvent(ev)
 
 
 class VERDisplayWidget(QWidget):
@@ -30,6 +55,7 @@ class VERDisplayWidget(QWidget):
         self.sample_index = 0
         self._last_scroll_draw = 0.0
         self._scroll_min_interval = 1.0 / max(1, DISPLAY_CONFIG.get("scroll_max_fps", 30))
+        self._raw_focused = False
 
         self.session_colors = [
             "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
@@ -69,7 +95,9 @@ class VERDisplayWidget(QWidget):
         self.plot_sessions.getViewBox().setMouseEnabled(x=False, y=True)
         self._reset_sessions_panel()
 
-        self.plot_raw = self.graphics.addPlot(row=0, col=1, title="Raw + Filtered EEG")
+        _vb = _FocusableViewBox()
+        _vb.sigDoubleClicked.connect(self.toggle_raw_focus)
+        self.plot_raw = self.graphics.addPlot(row=0, col=1, viewBox=_vb, title=_RAW_TITLE_NORMAL)
         self.plot_raw.getViewBox().setMouseEnabled(x=False, y=True)
         self.plot_raw.showGrid(x=True, y=True, alpha=0.3)
         self.plot_raw.setLabel("bottom", "Time", "s")
@@ -108,6 +136,38 @@ class VERDisplayWidget(QWidget):
 
     def set_status(self, text: str) -> None:
         self.status_label.setText(text)
+
+    def toggle_raw_focus(self) -> None:
+        """Toggle the Raw + Filtered EEG panel between normal and focused (enlarged) view.
+
+        Double-click the panel to enlarge it; double-click again to restore the
+        standard multi-panel layout.  Only layout/visibility state is changed —
+        no data is reprocessed and no extra filtering passes are triggered.
+        """
+        self._raw_focused = not self._raw_focused
+        layout = self.graphics.ci.layout
+
+        if self._raw_focused:
+            # Collapse the VER-evolution column (col 0) and the lower two rows
+            # (Scope View and Wavelet Scalogram) so plot_raw fills the view.
+            layout.setColumnMaximumWidth(0, 0)
+            layout.setRowMaximumHeight(1, 0)
+            layout.setRowMaximumHeight(2, 0)
+            self.plot_sessions.hide()
+            self.plot_scope.hide()
+            self.plot_wavelet.hide()
+            self.wavelet_stats_label.hide()
+            self.plot_raw.setTitle(_RAW_TITLE_FOCUSED)
+        else:
+            # Restore all panels by removing size constraints and showing items.
+            layout.setColumnMaximumWidth(0, _LAYOUT_UNCONSTRAINED)
+            layout.setRowMaximumHeight(1, _LAYOUT_UNCONSTRAINED)
+            layout.setRowMaximumHeight(2, _LAYOUT_UNCONSTRAINED)
+            self.plot_sessions.show()
+            self.plot_scope.show()
+            self.plot_wavelet.show()
+            self.wavelet_stats_label.show()
+            self.plot_raw.setTitle(_RAW_TITLE_NORMAL)
 
     def update_scroll_panel(self, raw_sample: float, filtered_sample: float, trigger_detected: bool) -> None:
         t = self.sample_index / self.sample_rate
@@ -290,6 +350,9 @@ class VERDisplayWidget(QWidget):
         self.plot_sessions.setYRange(self._sessions_y_min - margin, self._sessions_y_max + margin, padding=0)
 
     def reset_all(self):
+        # Restore normal layout if the raw panel was enlarged.
+        if self._raw_focused:
+            self.toggle_raw_focus()
         self._offset_step = None
         self.raw_buffer.clear()
         self.filtered_buffer.clear()
