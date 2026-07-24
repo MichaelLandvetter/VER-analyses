@@ -150,9 +150,9 @@ class VERDisplayWidget(QWidget):
         if self._raw_focused:
             # Collapse the VER-evolution column (col 0) and the lower two rows
             # (Scope View and Wavelet Scalogram) so plot_raw fills the view.
-            layout.setColumnMaximumWidth(0, 0.0)
-            layout.setRowMaximumHeight(1, 0.0)
-            layout.setRowMaximumHeight(2, 0.0)
+            layout.setColumnMaximumWidth(0, 0)
+            layout.setRowMaximumHeight(1, 0)
+            layout.setRowMaximumHeight(2, 0)
             self.plot_sessions.hide()
             self.plot_scope.hide()
             self.plot_wavelet.hide()

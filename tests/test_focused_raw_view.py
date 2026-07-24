@@ -312,13 +312,13 @@ def test_toggle_raw_focus_behaviour_focus_then_restore():
     assert not stub.wavelet_stats_label.visible, "wavelet_stats_label must be hidden in focused mode"
 
     # Layout must have collapsed col 0 and rows 1/2
-    assert any(c == ("setColumnMaximumWidth", 0, 0.0) for c in calls), (
+    assert any(c == ("setColumnMaximumWidth", 0, 0) for c in calls), (
         "Column 0 max-width must be set to 0 when entering focused mode"
     )
-    assert any(c == ("setRowMaximumHeight", 1, 0.0) for c in calls), (
+    assert any(c == ("setRowMaximumHeight", 1, 0) for c in calls), (
         "Row 1 max-height must be set to 0 when entering focused mode"
     )
-    assert any(c == ("setRowMaximumHeight", 2, 0.0) for c in calls), (
+    assert any(c == ("setRowMaximumHeight", 2, 0) for c in calls), (
         "Row 2 max-height must be set to 0 when entering focused mode"
     )
 
