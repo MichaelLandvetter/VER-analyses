@@ -15,8 +15,9 @@ from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from ver_config import ACQ_CONFIG, DISPLAY_CONFIG, EPOCH_CONFIG
 
-# Large value used to remove size constraints from QGraphicsGridLayout columns/rows.
-_LAYOUT_UNCONSTRAINED = 1_000_000.0
+# Qt's QWIDGETSIZE_MAX (16 777 215) used to effectively remove size constraints
+# from QGraphicsGridLayout columns/rows when restoring the normal layout.
+_LAYOUT_UNCONSTRAINED = 16_777_215.0
 
 _RAW_TITLE_NORMAL = "Raw + Filtered EEG  \u00b7 double-click to enlarge"
 _RAW_TITLE_FOCUSED = "Raw + Filtered EEG  \u00b7 double-click to restore"
