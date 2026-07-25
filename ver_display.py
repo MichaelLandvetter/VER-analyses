@@ -22,6 +22,13 @@ _LAYOUT_UNCONSTRAINED = 16_777_215.0
 _RAW_TITLE_NORMAL = "Raw + Filtered EEG  \u00b7 double-click to enlarge"
 _RAW_TITLE_FOCUSED = "Raw + Filtered EEG  \u00b7 double-click to restore"
 
+# Hint-only strings appended to the dynamic flash-count title in update_scope_panel.
+_SCOPE_HINT_NORMAL = "  \u00b7 double-click to enlarge"
+_SCOPE_HINT_FOCUSED = "  \u00b7 double-click to restore"
+# Full static titles used when no flash data is present (initial state, reset, toggle).
+_SCOPE_TITLE_NORMAL = "Scope View  \u00b7 double-click to enlarge"
+_SCOPE_TITLE_FOCUSED = "Scope View  \u00b7 double-click to restore"
+
 
 class _FocusableViewBox(pg.ViewBox):
     """ViewBox that emits *sigDoubleClicked* on a left-button double-click.
@@ -56,6 +63,7 @@ class VERDisplayWidget(QWidget):
         self._last_scroll_draw = 0.0
         self._scroll_min_interval = 1.0 / max(1, DISPLAY_CONFIG.get("scroll_max_fps", 30))
         self._raw_focused = False
+        self._scope_focused = False
 
         self.session_colors = [
             "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
@@ -110,7 +118,9 @@ class VERDisplayWidget(QWidget):
         self.flash_scatter = pg.ScatterPlotItem(size=6, brush=pg.mkBrush(255, 0, 0, 180), pen=pg.mkPen(None))
         self.plot_raw.addItem(self.flash_scatter)
 
-        self.plot_scope = self.graphics.addPlot(row=1, col=1, title="Scope View")
+        scope_viewbox = _FocusableViewBox()
+        scope_viewbox.sigDoubleClicked.connect(self.toggle_scope_focus)
+        self.plot_scope = self.graphics.addPlot(row=1, col=1, viewBox=scope_viewbox, title=_SCOPE_TITLE_NORMAL)
         self.plot_scope.getViewBox().setMouseEnabled(x=False, y=True)
         self.plot_scope.showGrid(x=True, y=True, alpha=0.3)
         self.plot_scope.setLabel("bottom", "Time", "ms")
@@ -168,6 +178,38 @@ class VERDisplayWidget(QWidget):
             self.plot_wavelet.show()
             self.wavelet_stats_label.show()
             self.plot_raw.setTitle(_RAW_TITLE_NORMAL)
+
+    def toggle_scope_focus(self) -> None:
+        """Toggle the Scope View panel between normal and focused (enlarged) view.
+
+        Double-click the panel to enlarge it; double-click again to restore the
+        standard multi-panel layout.  Only layout/visibility state is changed —
+        no data is reprocessed and no extra filtering passes are triggered.
+        """
+        self._scope_focused = not self._scope_focused
+        layout = self.graphics.ci.layout
+
+        if self._scope_focused:
+            # Collapse the VER-evolution column (col 0) and the adjacent rows
+            # (Raw EEG at row 0 and Wavelet Scalogram at row 2) so plot_scope fills the view.
+            layout.setColumnMaximumWidth(0, 0)
+            layout.setRowMaximumHeight(0, 0)
+            layout.setRowMaximumHeight(2, 0)
+            self.plot_sessions.hide()
+            self.plot_raw.hide()
+            self.plot_wavelet.hide()
+            self.wavelet_stats_label.hide()
+            self.plot_scope.setTitle(_SCOPE_TITLE_FOCUSED)
+        else:
+            # Restore all panels by removing size constraints and showing items.
+            layout.setColumnMaximumWidth(0, _LAYOUT_UNCONSTRAINED)
+            layout.setRowMaximumHeight(0, _LAYOUT_UNCONSTRAINED)
+            layout.setRowMaximumHeight(2, _LAYOUT_UNCONSTRAINED)
+            self.plot_sessions.show()
+            self.plot_raw.show()
+            self.plot_wavelet.show()
+            self.wavelet_stats_label.show()
+            self.plot_scope.setTitle(_SCOPE_TITLE_NORMAL)
 
     def update_scroll_panel(self, raw_sample: float, filtered_sample: float, trigger_detected: bool) -> None:
         t = self.sample_index / self.sample_rate
@@ -233,7 +275,9 @@ class VERDisplayWidget(QWidget):
             )
         else:
             title = f"Scope View - Flash {flash_count}/{EPOCH_CONFIG['flashes_per_session']} | {session_number}/{EPOCH_CONFIG['num_sessions']}"
-        self.plot_scope.setTitle(title)
+        # Append the double-click hint to the title regardless of which branch was taken.
+        hint = _SCOPE_HINT_FOCUSED if self._scope_focused else _SCOPE_HINT_NORMAL
+        self.plot_scope.setTitle(title + hint)
 
     def clear_scope_panel(self):
         for curve in self.scope_overlay_curves:
@@ -353,6 +397,9 @@ class VERDisplayWidget(QWidget):
         # Restore normal layout if the raw panel was enlarged.
         if self._raw_focused:
             self.toggle_raw_focus()
+        # Restore normal layout if the scope panel was enlarged.
+        if self._scope_focused:
+            self.toggle_scope_focus()
         self._offset_step = None
         self.raw_buffer.clear()
         self.filtered_buffer.clear()
@@ -372,6 +419,7 @@ class VERDisplayWidget(QWidget):
         self.plot_raw.enableAutoRange(y=True)
         self.plot_scope.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)
         self.plot_scope.enableAutoRange('y', True)
+        self.plot_scope.setTitle(_SCOPE_TITLE_NORMAL)
         self.plot_wavelet.setXRange(-EPOCH_CONFIG["pre_stim_ms"], EPOCH_CONFIG["post_stim_ms"], padding=0)
         self.plot_wavelet.enableAutoRange(y=True)
         

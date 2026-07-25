@@ -21,6 +21,7 @@ if getattr(sys, 'frozen', False):
 from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QTextOption
 from PyQt6.QtWidgets import (
+    QAbstractSpinBox,
     QApplication,
     QCheckBox,
     QComboBox,
@@ -33,11 +34,13 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QPushButton,
     QSlider,
     QTextBrowser,
+    QTextEdit,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -778,7 +781,7 @@ class VERMainWindow(QMainWindow):
 
         # --- Control Widgets ---
         self.start_btn = QPushButton("Start")
-        self.stop_btn = QPushButton("Stop")
+        self.stop_btn = QPushButton("Stop  (Space)")
         self.reset_btn = QPushButton("Reset")
         self.save_btn = QPushButton("Save Report")
         self.start_btn.clicked.connect(self.start_acquisition)
@@ -1275,7 +1278,7 @@ class VERMainWindow(QMainWindow):
     def stop_acquisition(self):
         if self.worker is not None:
             self.worker.pause_stream()
-        self.start_btn.setText("Resume")
+        self.start_btn.setText("Resume  (Space)")
             
     def reset_all(self):
         self.bandpass = BandpassFilter({
@@ -1708,6 +1711,31 @@ class VERMainWindow(QMainWindow):
             f"Waveforms CSV: {waveforms_csv_name}\n"
             f"RAW Data: {raw_file_name}"
         )
+
+    def keyPressEvent(self, event):
+        """Handle Space bar to toggle Stop/Resume during an active analysis session.
+
+        Space toggles between Stop and Resume only when analysis has already
+        started (i.e. the start button shows "Running..." or "Resume  (Space)").
+        Space is intentionally NOT mapped to the initial Start action.
+        The shortcut is suppressed when focus is in a text-entry or spin-box
+        widget so that normal typing is never interrupted.
+        """
+        if event.key() == Qt.Key.Key_Space:
+            focused = QApplication.focusWidget()
+            if isinstance(focused, (QLineEdit, QAbstractSpinBox, QTextEdit)):
+                super().keyPressEvent(event)
+                return
+            btn_text = self.start_btn.text()
+            if btn_text.startswith("Running"):
+                self.stop_acquisition()
+                event.accept()
+                return
+            elif btn_text.startswith("Resume"):
+                self.start_acquisition()
+                event.accept()
+                return
+        super().keyPressEvent(event)
 
     def closeEvent(self, event):
         self._shutdown_worker()
