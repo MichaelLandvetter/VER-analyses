@@ -77,17 +77,15 @@ def test_key_press_event_calls_start_acquisition_when_paused():
 def test_key_press_event_does_not_trigger_initial_start():
     src = _method_src("VERMainWindow", "keyPressEvent")
     # Space must only fire for Running or Resume states, never for the Start state.
-    # The guard uses startswith("Running") and startswith("Resume") — "Start" must not appear
-    # as a condition that triggers action.
-    assert "Start" not in src or "startswith" in src, (
-        "keyPressEvent must not map Space to the initial Start action"
+    # Confirm the code branches on "Running" and "Resume" text.
+    assert 'startswith("Running")' in src or 'startswith("Resume")' in src, (
+        "keyPressEvent must use startswith checks for Running/Resume states"
     )
-    # More precise: check that the code branches on "Running" or "Resume", not "Start"
-    assert 'startswith("Running")' in src or '"Running"' in src, (
-        "keyPressEvent must check for the Running state"
-    )
-    assert 'startswith("Resume")' in src or '"Resume"' in src, (
-        "keyPressEvent must check for the Resume state"
+    # Confirm there is no branch that acts on the "Start" button text (which would
+    # accidentally bind Space to the initial Start action).
+    assert 'startswith("Start")' not in src and '== "Start"' not in src, (
+        "keyPressEvent must not branch on the 'Start' button text — "
+        "Space must never trigger the initial Start action"
     )
 
 

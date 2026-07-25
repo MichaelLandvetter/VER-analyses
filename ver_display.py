@@ -271,9 +271,8 @@ class VERDisplayWidget(QWidget):
             )
         else:
             title = f"Scope View - Flash {flash_count}/{EPOCH_CONFIG['flashes_per_session']} | {session_number}/{EPOCH_CONFIG['num_sessions']}"
-        if self._scope_focused:
-            title += "  \u00b7  double-click to restore"
-        self.plot_scope.setTitle(title)
+        hint = "  \u00b7  double-click to restore" if self._scope_focused else "  \u00b7  double-click to enlarge"
+        self.plot_scope.setTitle(title + hint)
 
     def clear_scope_panel(self):
         for curve in self.scope_overlay_curves:
