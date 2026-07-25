@@ -275,6 +275,7 @@ class VERDisplayWidget(QWidget):
             )
         else:
             title = f"Scope View - Flash {flash_count}/{EPOCH_CONFIG['flashes_per_session']} | {session_number}/{EPOCH_CONFIG['num_sessions']}"
+        # Append the double-click hint to the title regardless of which branch was taken.
         hint = _SCOPE_HINT_FOCUSED if self._scope_focused else _SCOPE_HINT_NORMAL
         self.plot_scope.setTitle(title + hint)
 

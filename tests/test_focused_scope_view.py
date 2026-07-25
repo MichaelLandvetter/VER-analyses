@@ -14,8 +14,21 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 _VER_DISPLAY_SRC = (REPO_ROOT / "ver_display.py").read_text(encoding="utf-8")
 _VER_DISPLAY_TREE = ast.parse(_VER_DISPLAY_SRC)
 
-# Qt's QWIDGETSIZE_MAX — must match the _LAYOUT_UNCONSTRAINED constant in ver_display.py.
-_LAYOUT_UNCONSTRAINED = 16_777_215.0
+
+def _get_module_constant(name: str):
+    """Extract a literal module-level constant from the parsed ver_display.py AST."""
+    for node in _VER_DISPLAY_TREE.body:
+        if (
+            isinstance(node, ast.Assign)
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == name
+        ):
+            return ast.literal_eval(node.value)
+    raise AssertionError(f"Module constant {name!r} not found in ver_display.py")
+
+
+# Read directly from the source so the test stays in sync if the value ever changes.
+_LAYOUT_UNCONSTRAINED = _get_module_constant("_LAYOUT_UNCONSTRAINED")
 
 
 # ---------------------------------------------------------------------------
