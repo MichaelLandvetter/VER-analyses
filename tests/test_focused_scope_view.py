@@ -14,6 +14,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 _VER_DISPLAY_SRC = (REPO_ROOT / "ver_display.py").read_text(encoding="utf-8")
 _VER_DISPLAY_TREE = ast.parse(_VER_DISPLAY_SRC)
 
+# Qt's QWIDGETSIZE_MAX — must match the _LAYOUT_UNCONSTRAINED constant in ver_display.py.
+_LAYOUT_UNCONSTRAINED = 16_777_215.0
+
 
 # ---------------------------------------------------------------------------
 # Helpers (shared with test_focused_raw_view.py by convention)
@@ -280,14 +283,13 @@ def test_toggle_scope_focus_behaviour_focus_then_restore():
     assert stub.wavelet_stats_label.visible, "wavelet_stats_label must be shown after restore"
 
     # Layout must have removed constraints for col 0 and rows 0/2
-    unconstrained = 16_777_215.0
-    assert any(c == ("setColumnMaximumWidth", 0, unconstrained) for c in calls), (
+    assert any(c == ("setColumnMaximumWidth", 0, _LAYOUT_UNCONSTRAINED) for c in calls), (
         "Column 0 max-width must be restored to QWIDGETSIZE_MAX after restore"
     )
-    assert any(c == ("setRowMaximumHeight", 0, unconstrained) for c in calls), (
+    assert any(c == ("setRowMaximumHeight", 0, _LAYOUT_UNCONSTRAINED) for c in calls), (
         "Row 0 max-height must be restored to QWIDGETSIZE_MAX after restore"
     )
-    assert any(c == ("setRowMaximumHeight", 2, unconstrained) for c in calls), (
+    assert any(c == ("setRowMaximumHeight", 2, _LAYOUT_UNCONSTRAINED) for c in calls), (
         "Row 2 max-height must be restored to QWIDGETSIZE_MAX after restore"
     )
 

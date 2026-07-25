@@ -22,8 +22,12 @@ _LAYOUT_UNCONSTRAINED = 16_777_215.0
 _RAW_TITLE_NORMAL = "Raw + Filtered EEG  \u00b7 double-click to enlarge"
 _RAW_TITLE_FOCUSED = "Raw + Filtered EEG  \u00b7 double-click to restore"
 
-_SCOPE_TITLE_NORMAL = "Scope View  \u00b7  double-click to enlarge"
-_SCOPE_TITLE_FOCUSED = "Scope View  \u00b7  double-click to restore"
+# Hint-only strings appended to the dynamic flash-count title in update_scope_panel.
+_SCOPE_HINT_NORMAL = "  \u00b7 double-click to enlarge"
+_SCOPE_HINT_FOCUSED = "  \u00b7 double-click to restore"
+# Full static titles used when no flash data is present (initial state, reset, toggle).
+_SCOPE_TITLE_NORMAL = "Scope View  \u00b7 double-click to enlarge"
+_SCOPE_TITLE_FOCUSED = "Scope View  \u00b7 double-click to restore"
 
 
 class _FocusableViewBox(pg.ViewBox):
@@ -271,7 +275,7 @@ class VERDisplayWidget(QWidget):
             )
         else:
             title = f"Scope View - Flash {flash_count}/{EPOCH_CONFIG['flashes_per_session']} | {session_number}/{EPOCH_CONFIG['num_sessions']}"
-        hint = "  \u00b7  double-click to restore" if self._scope_focused else "  \u00b7  double-click to enlarge"
+        hint = _SCOPE_HINT_FOCUSED if self._scope_focused else _SCOPE_HINT_NORMAL
         self.plot_scope.setTitle(title + hint)
 
     def clear_scope_panel(self):
