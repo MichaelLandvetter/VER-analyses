@@ -91,15 +91,15 @@ def test_key_press_event_does_not_trigger_initial_start():
 
 def test_stop_btn_label_includes_space_hint():
     src = _method_src("VERMainWindow", "_build_ui")
-    assert "Stop  (Space)" in src or "Stop (Space)" in src, (
-        "_build_ui must set the stop button label to include '(Space)' hint"
+    assert "Stop  (Space)" in src, (
+        "_build_ui must set the stop button label to 'Stop  (Space)' (two spaces before paren)"
     )
 
 
 def test_stop_acquisition_sets_resume_with_space_hint():
     src = _method_src("VERMainWindow", "stop_acquisition")
-    assert "Resume  (Space)" in src or "Resume (Space)" in src, (
-        "stop_acquisition must set start_btn text to 'Resume  (Space)' "
+    assert "Resume  (Space)" in src, (
+        "stop_acquisition must set start_btn text to 'Resume  (Space)' (two spaces before paren) "
         "to inform users about the keyboard shortcut"
     )
 

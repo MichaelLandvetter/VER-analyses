@@ -118,9 +118,9 @@ class VERDisplayWidget(QWidget):
         self.flash_scatter = pg.ScatterPlotItem(size=6, brush=pg.mkBrush(255, 0, 0, 180), pen=pg.mkPen(None))
         self.plot_raw.addItem(self.flash_scatter)
 
-        _vb_scope = _FocusableViewBox()
-        _vb_scope.sigDoubleClicked.connect(self.toggle_scope_focus)
-        self.plot_scope = self.graphics.addPlot(row=1, col=1, viewBox=_vb_scope, title=_SCOPE_TITLE_NORMAL)
+        scope_viewbox = _FocusableViewBox()
+        scope_viewbox.sigDoubleClicked.connect(self.toggle_scope_focus)
+        self.plot_scope = self.graphics.addPlot(row=1, col=1, viewBox=scope_viewbox, title=_SCOPE_TITLE_NORMAL)
         self.plot_scope.getViewBox().setMouseEnabled(x=False, y=True)
         self.plot_scope.showGrid(x=True, y=True, alpha=0.3)
         self.plot_scope.setLabel("bottom", "Time", "ms")
