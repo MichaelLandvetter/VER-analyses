@@ -59,7 +59,8 @@ def save_ver_report(
     session_artifact_rejection_enabled: Optional[List[Optional[bool]]] = None,
     session_artifact_exclusion_thresholds: Optional[List[Optional[float]]] = None,
     human_overrides: Optional[List[bool]] = None,
-    force_stem: Optional[str] = None
+    force_stem: Optional[str] = None,
+    output_dir: Optional[Path] = None,
 ) -> Optional[dict]:
     
     if not session_averages:
@@ -77,7 +78,9 @@ def save_ver_report(
             stem = f"Live_Session_{timestamp}"
 
     # 2. Establish the directory using the locked stem
-    if "serial_live_report" in data_path.stem or "Live_Session" in stem:
+    if output_dir is not None:
+        report_dir = Path(output_dir)
+    elif "serial_live_report" in data_path.stem or "Live_Session" in stem:
         report_dir = Path.cwd() / "Reports" / stem
     else:
         report_dir = data_path.parent / "Reports" / stem

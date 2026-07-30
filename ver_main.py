@@ -33,6 +33,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -1571,12 +1572,64 @@ class VERMainWindow(QMainWindow):
         
         return loading_dialog
     
+    def _prompt_live_session_info(self):
+        """Ask the user for a base folder and experiment name for a live USB session.
+
+        Returns a ``(output_dir, experiment_name)`` tuple where *output_dir* is
+        a :class:`~pathlib.Path` pointing at ``<base_folder>/<experiment_name>``
+        and *experiment_name* is the sanitised name string.  Returns
+        ``(None, None)`` if the user cancels either dialog.
+        """
+        # Step 1 – choose the base folder
+        base_folder = QFileDialog.getExistingDirectory(
+            self,
+            "Choose Base Output Folder for This Session",
+            str(Path.home()),
+        )
+        if not base_folder:
+            return None, None
+
+        # Step 2 – enter the experiment / session name
+        experiment_name, ok = QInputDialog.getText(
+            self,
+            "Experiment Name",
+            "Enter a name for this experiment / session\n"
+            "(used as the folder name and file prefix):",
+            text="",
+        )
+        if not ok:
+            return None, None
+
+        experiment_name = experiment_name.strip()
+        if not experiment_name:
+            QMessageBox.warning(
+                self,
+                "No Name Entered",
+                "An experiment name is required. Please try saving again.",
+            )
+            return None, None
+
+        # Sanitise: replace characters that are invalid in folder / file names
+        for ch in r'\/:*?"<>|':
+            experiment_name = experiment_name.replace(ch, "_")
+
+        output_dir = Path(base_folder) / experiment_name
+        return output_dir, experiment_name
+
     def save_report(self):
         self.max_speed_warning.hide()
         report_input = self.data_file
+        live_output_dir = None
+        live_experiment_name = None
+
         if report_input is None:
+            # USB Serial (live acquisition) – prompt the user for save location
+            live_output_dir, live_experiment_name = self._prompt_live_session_info()
+            if live_output_dir is None:
+                # User cancelled – abort save
+                return
             report_input = str(Path.cwd() / "serial_live_report.txt")
-            
+
         # --- NEW: Show loading screen for Pass 1 ---
         load_ui = self.show_loading_screen(
             "Processing...", 
@@ -1599,6 +1652,8 @@ class VERMainWindow(QMainWindow):
                 session_flash_counts_accepted=self.session_flash_counts_accepted if self.session_flash_counts_accepted else None,
                 session_artifact_rejection_enabled=self.session_artifact_rejection_enabled if self.session_artifact_rejection_enabled else None,
                 session_artifact_exclusion_thresholds=self.session_artifact_exclusion_thresholds if self.session_artifact_exclusion_thresholds else None,
+                force_stem=live_experiment_name,
+                output_dir=live_output_dir,
             )
         except PermissionError:
             load_ui.accept()
@@ -1661,7 +1716,8 @@ class VERMainWindow(QMainWindow):
                         session_artifact_rejection_enabled=self.session_artifact_rejection_enabled if self.session_artifact_rejection_enabled else None,
                         session_artifact_exclusion_thresholds=self.session_artifact_exclusion_thresholds if self.session_artifact_exclusion_thresholds else None,
                         human_overrides=overrides,
-                        force_stem=original_stem 
+                        force_stem=original_stem,
+                        output_dir=live_output_dir,
                     )
                 except Exception as e:
                     log.exception("Failed to save validated report (pass 2)")
@@ -1692,10 +1748,16 @@ class VERMainWindow(QMainWindow):
                 
                 raw_path = Path(self.worker.source._raw_log_path)
                 if raw_path.exists():
-                    new_path = Path(report_dir_str) / raw_path.name
+                    # For live sessions use a descriptive filename based on the
+                    # experiment name; for file-replay sessions keep the original name.
+                    if live_experiment_name:
+                        raw_dest_name = f"{live_experiment_name}_raw{raw_path.suffix}"
+                    else:
+                        raw_dest_name = raw_path.name
+                    new_path = Path(report_dir_str) / raw_dest_name
                     try:
                         shutil.move(str(raw_path), str(new_path))
-                        raw_file_name = raw_path.name
+                        raw_file_name = raw_dest_name
                         self.worker.source._raw_log_path = None 
                     except Exception as e:
                         log.warning("Could not move raw file: %s", e)
