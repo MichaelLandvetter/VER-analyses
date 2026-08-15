@@ -23,6 +23,17 @@ FILE_FORMATS = {
         "trigger_mode": "interval",
         "trigger_threshold": 0.1,
     },
+    "Live-USB": {
+        # Format written by SerialAcquisitionSource during live USB sessions.
+        # Column 0: normalised trigger level (0.0–1.0); column 1: EEG (µV).
+        # The file begins with a "#VER_LIVE_USB" marker line (skip_header=1).
+        "delimiter": "\t",
+        "trigger_column": 0,
+        "eeg_column": 1,
+        "skip_header": 1,
+        "trigger_mode": "threshold",
+        "trigger_threshold": 0.5,
+    },
 }
 
 FILE_CONFIG = dict(FILE_FORMATS["SD-card"])  # active config, updated at runtime when user switches format

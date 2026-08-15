@@ -127,7 +127,9 @@ def prompt_analysis_complete_action(parent) -> str:
 def auto_detect_file_format(filepath: str) -> str | None:
     """
     Reads the first data line of the file and determines the format.
-    LabChart and USB serial typically has 2 columns, SD-card has 5 columns.
+    Live USB exports begin with a ``#VER_LIVE_USB`` marker line; those are
+    returned as ``"Live-USB"`` immediately.  LabChart and USB serial typically
+    have 2 columns; SD-card has 5 columns.
     """
     try:
         with open(filepath, "r", encoding="utf-8", errors="replace") as f:
@@ -135,6 +137,10 @@ def auto_detect_file_format(filepath: str) -> str | None:
                 line = line.strip()
                 if not line:
                     continue  # Skip empty lines
+
+                # Live-USB marker written by SerialAcquisitionSource._open()
+                if line == "#VER_LIVE_USB":
+                    return "Live-USB"
                 
                 columns = line.split("\t")
                 

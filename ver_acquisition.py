@@ -123,6 +123,7 @@ class SerialAcquisitionSource:
         # Clean logging variables
         self._raw_log_file = None
         self._raw_log_path = None
+        self._last_normalized_trigger: float = 0.0
 
     def _decode_serial_trigger(self, trigger_state: int) -> float:
         raw_level = max(0.0, float(trigger_state))
@@ -133,6 +134,11 @@ class SerialAcquisitionSource:
             normalized_level = (raw_level - self._serial_trigger_floor) / span
         else:
             normalized_level = 0.0
+
+        # Store the pre-hysteresis normalised level so the raw log can record
+        # it directly.  This preserves real trigger transitions even when the
+        # hysteresis output stays stuck at 1.0 between flashes.
+        self._last_normalized_trigger = normalized_level
 
         if self._serial_trigger_high:
             if normalized_level <= self._serial_trigger_low_threshold:
@@ -157,11 +163,11 @@ class SerialAcquisitionSource:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             self._raw_log_path = Path(f"RAW_USB_Data_{timestamp}.txt")
             self._raw_log_file = open(self._raw_log_path, "w")
-            
-            # Write exactly 2 columns of dummy headers if your LabChart config expects skipped lines
-            skip_lines = int(FILE_CONFIG.get("skip_header", 0))
-            for i in range(skip_lines):
-                self._raw_log_file.write(f"Header_{i}\tHeader_{i}\n")
+
+            # Marker line so auto_detect_file_format (ver_main.py) can
+            # unambiguously identify this as a Live-USB export and select the
+            # matching FILE_FORMATS["Live-USB"] entry (skip_header=1).
+            self._raw_log_file.write("#VER_LIVE_USB\n")
         except Exception as e:
             print(f"Warning: Could not start raw data logger: {e}")
             self._raw_log_file = None
@@ -218,9 +224,13 @@ class SerialAcquisitionSource:
                 while True:
                     sample = self._try_parse_binary_sample()
                     if sample is not None:
-                        # --- STRICTLY 2 COLUMNS (Trigger, EEG) ---
+                        # Write the pre-hysteresis normalised trigger level
+                        # (not the decoded level which can be constant 1.0).
+                        # This ensures the raw log file has proper 0→1
+                        # transitions that can be replayed via Data File
+                        # analysis with the "Live-USB" format.
                         if self._raw_log_file is not None:
-                            row = [str(sample[0]), str(sample[1])]
+                            row = [str(self._last_normalized_trigger), str(sample[1])]
                             self._raw_log_file.write("\t".join(row) + "\n")
                             
                         yield sample
