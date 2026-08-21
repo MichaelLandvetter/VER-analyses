@@ -614,15 +614,33 @@ class ClassifierSettingsTab(QWidget):
 
         peak_mode_box = QGroupBox("Peak detection used for initial peak picks")
         peak_mode_layout = QFormLayout()
-        for value, label in PEAK_DETECTION_MODE_OPTIONS.items():
-            self.peak_detection_mode_combo.addItem(label, value)
-        selected_mode = str(self.cfg.get("peak_detection_mode", "legacy_top3"))
+        # Only expose the recommended mode by default; legacy is hidden behind a developer toggle.
+        self.peak_detection_mode_combo.addItem(
+            PEAK_DETECTION_MODE_OPTIONS["dominant_opposite_neighbors"],
+            "dominant_opposite_neighbors",
+        )
+        selected_mode = str(self.cfg.get("peak_detection_mode", "dominant_opposite_neighbors"))
+        # If the saved setting is legacy, reveal the option so the saved value is preserved.
+        if selected_mode == "legacy_top3":
+            self.peak_detection_mode_combo.addItem(
+                PEAK_DETECTION_MODE_OPTIONS["legacy_top3"],
+                "legacy_top3",
+            )
         selected_index = self.peak_detection_mode_combo.findData(selected_mode)
         self.peak_detection_mode_combo.setCurrentIndex(selected_index if selected_index >= 0 else 0)
         self.peak_detection_mode_combo.setToolTip(
             "Controls how Peak-1/2/3 are seeded before human validation."
         )
         peak_mode_layout.addRow(QLabel("Mode"), self.peak_detection_mode_combo)
+
+        self.show_legacy_check = QCheckBox("Show legacy mode (developer/fallback only)")
+        self.show_legacy_check.setChecked(selected_mode == "legacy_top3")
+        self.show_legacy_check.setToolTip(
+            "Reveals the legacy top-3 amplitude mode. Intended for advanced users or fallback testing only."
+        )
+        self.show_legacy_check.stateChanged.connect(self._toggle_legacy_mode_option)
+        peak_mode_layout.addRow(self.show_legacy_check)
+
         peak_mode_box.setLayout(peak_mode_layout)
         main_layout.addWidget(peak_mode_box)
 
@@ -632,6 +650,19 @@ class ClassifierSettingsTab(QWidget):
         main_layout.addWidget(save_btn)
         main_layout.addStretch()
         self.setLayout(main_layout)
+
+    def _toggle_legacy_mode_option(self, state: int) -> None:
+        """Add or remove the legacy mode item in the combo based on the developer toggle."""
+        legacy_idx = self.peak_detection_mode_combo.findData("legacy_top3")
+        if state:
+            if legacy_idx < 0:
+                self.peak_detection_mode_combo.addItem(
+                    PEAK_DETECTION_MODE_OPTIONS["legacy_top3"],
+                    "legacy_top3",
+                )
+        else:
+            if legacy_idx >= 0 and self.peak_detection_mode_combo.currentData() != "legacy_top3":
+                self.peak_detection_mode_combo.removeItem(legacy_idx)
 
     def save_settings(self):
         for key, spin in self.inputs.items():
@@ -1409,7 +1440,12 @@ class VERMainWindow(QMainWindow):
         self.display.set_status(f"Filter updated: {low:.1f}-{high:.1f} Hz")
 
     def _run_filter_compare(self):
-        """Compute scope-averages for all three filter modes and show an overlay diagnostic."""
+        """Compute scope-averages for all three filter modes and show an overlay diagnostic.
+
+        Peak positions are determined by the same ``detect_ver_peaks`` pipeline used during
+        VER classification/report so results are directly comparable to those outputs.
+        The exported CSV includes per-peak SNR and constraint-pass flags.
+        """
         # Collect raw (unfiltered) epochs to compare filters on identical data.
         raw_epochs: list | None = None
         source_label = ""
@@ -1466,50 +1502,45 @@ class VERMainWindow(QMainWindow):
             QMessageBox.critical(self, "Filter Compare Error", f"Failed to apply filters:\n{exc}")
             return
 
-        # --- Detect first trough and first peak in [0, 200] ms ---
-        post_mask = (time_ms >= 0) & (time_ms <= 200)
+        # Use the same classifier config active for classification/report.
+        classifier_cfg = self.settings_manager.settings.get("CLASSIFIER_CONFIG", {})
 
-        def _first_extrema(waveform: np.ndarray):
-            seg = waveform[post_mask]
-            seg_t = time_ms[post_mask]
-            if seg.size == 0:
-                return float("nan"), float("nan"), float("nan"), float("nan")
-            trough_idx = int(np.argmin(seg))
-            peak_idx = int(np.argmax(seg))
-            return float(seg_t[trough_idx]), float(seg[trough_idx]), float(seg_t[peak_idx]), float(seg[peak_idx])
-
-        metrics: list[dict] = []
-        fir_trough_t, _, fir_peak_t, _ = _first_extrema(averages[SCOPE_FILTER_FIR])
-        fir_has_data = not np.isnan(fir_trough_t)
-
+        # Run the shared peak-detection pipeline for each filter mode.
+        peak_results: dict[str, dict] = {}
         for mode in modes:
-            tr_t, tr_amp, pk_t, pk_amp = _first_extrema(averages[mode])
-            t2p = pk_amp - tr_amp
-            delta_trough = (tr_t - fir_trough_t) if fir_has_data and not np.isnan(tr_t) else float("nan")
-            delta_peak = (pk_t - fir_peak_t) if fir_has_data and not np.isnan(pk_t) else float("nan")
-            metrics.append({
-                "mode": mode,
-                "trough_latency_ms": tr_t,
-                "peak_latency_ms": pk_t,
-                "trough_to_peak_uv": t2p,
-                "delta_trough_vs_fir_ms": delta_trough,
-                "delta_peak_vs_fir_ms": delta_peak,
-            })
+            if averages[mode].size == 0 or not np.any((time_ms >= 0) & (time_ms <= 200)):
+                peak_results[mode] = None
+            else:
+                try:
+                    peak_results[mode] = detect_ver_peaks(
+                        averages[mode], time_ms, classifier_cfg=classifier_cfg
+                    )
+                except Exception:
+                    peak_results[mode] = None
 
         # --- Build figure ---
         fig, ax = plt.subplots(figsize=(10, 5), facecolor="white")
+        peak_markers = {
+            "Peak-1": ("o", 7),
+            "Peak-2": ("D", 8),
+            "Peak-3": ("s", 7),
+        }
         for mode, color in zip(modes, colors):
             waveform = averages[mode]
             ax.plot(time_ms, waveform, label=mode, color=color, linewidth=1.5)
-            tr_t, tr_amp, pk_t, pk_amp = _first_extrema(waveform)
-            if not np.isnan(tr_t):
-                ax.plot(tr_t, tr_amp, "v", color=color, markersize=8)
-                ax.annotate(f"{tr_t:.0f} ms", (tr_t, tr_amp), textcoords="offset points",
-                            xytext=(4, -12), fontsize=7, color=color)
-            if not np.isnan(pk_t):
-                ax.plot(pk_t, pk_amp, "^", color=color, markersize=8)
-                ax.annotate(f"{pk_t:.0f} ms", (pk_t, pk_amp), textcoords="offset points",
-                            xytext=(4, 4), fontsize=7, color=color)
+            pr = peak_results.get(mode)
+            if pr is None:
+                continue
+            for pname, (marker, msize) in peak_markers.items():
+                peak = pr[pname]
+                if peak["found"] and not np.isnan(peak["latency_ms"]):
+                    ax.plot(peak["latency_ms"], peak["amplitude"], marker,
+                            color=color, markersize=msize)
+                    label_txt = f"{pname.replace('Peak-', 'P')} {peak['latency_ms']:.0f} ms"
+                    if peak["above_threshold"]:
+                        label_txt += " ✓"
+                    ax.annotate(label_txt, (peak["latency_ms"], peak["amplitude"]),
+                                textcoords="offset points", xytext=(4, 4), fontsize=7, color=color)
 
         ax.axvline(0, color="grey", linewidth=0.8, linestyle="--")
         ax.axhline(0, color="grey", linewidth=0.6, linestyle=":")
@@ -1517,34 +1548,74 @@ class VERMainWindow(QMainWindow):
         ax.set_ylabel("Amplitude (µV)")
         ax.set_title(
             f"Filter Compare  —  {low:.0f}–{high:.0f} Hz  |  {source_label}\n"
-            "▼ first trough   ▲ first peak   (0–200 ms window)"
+            "◆ P2 (dominant)   ● P1   ■ P3   ✓ = SNR above threshold"
         )
         ax.legend(loc="upper right", fontsize=9)
 
-        # Metrics table below the plot
-        col_labels = ["Mode", "Trough (ms)", "Peak (ms)", "T-to-P (µV)", "ΔTrough vs FIR", "ΔPeak vs FIR"]
-        table_data = [
-            [
-                m["mode"],
-                f"{m['trough_latency_ms']:.1f}",
-                f"{m['peak_latency_ms']:.1f}",
-                f"{m['trough_to_peak_uv']:.4f}",
-                f"{m['delta_trough_vs_fir_ms']:+.1f}",
-                f"{m['delta_peak_vs_fir_ms']:+.1f}",
-            ]
-            for m in metrics
+        # Metrics table below the plot — one row per filter mode.
+        col_labels = [
+            "Mode",
+            "P1 lat (ms)", "P1 SNR", "P1 ✓",
+            "P2 lat (ms)", "P2 SNR", "P2 ✓",
+            "P3 lat (ms)", "P3 SNR", "P3 ✓",
+            "VER",
         ]
+
+        def _fmt(val, fmt=".1f"):
+            return f"{val:{fmt}}" if not (isinstance(val, float) and np.isnan(val)) else "—"
+
+        def _bool(val):
+            return "Y" if val else "N"
+
+        table_data = []
+        metrics: list[dict] = []
+        for mode in modes:
+            pr = peak_results.get(mode)
+            if pr is None:
+                row = [mode] + ["—"] * (len(col_labels) - 1)
+                table_data.append(row)
+                metrics.append({"mode": mode})
+                continue
+            row = [
+                mode,
+                _fmt(pr["Peak-1"]["latency_ms"]),
+                _fmt(pr["Peak-1"]["snr"]),
+                _bool(pr["Peak-1"]["above_threshold"]),
+                _fmt(pr["Peak-2"]["latency_ms"]),
+                _fmt(pr["Peak-2"]["snr"]),
+                _bool(pr["Peak-2"]["above_threshold"]),
+                _fmt(pr["Peak-3"]["latency_ms"]),
+                _fmt(pr["Peak-3"]["snr"]),
+                _bool(pr["Peak-3"]["above_threshold"]),
+                _bool(pr["VER_detected"]),
+            ]
+            table_data.append(row)
+            metrics.append({
+                "mode": mode,
+                "p1_latency_ms": pr["Peak-1"]["latency_ms"],
+                "p1_snr": pr["Peak-1"]["snr"],
+                "p1_above_threshold": pr["Peak-1"]["above_threshold"],
+                "p2_latency_ms": pr["Peak-2"]["latency_ms"],
+                "p2_snr": pr["Peak-2"]["snr"],
+                "p2_above_threshold": pr["Peak-2"]["above_threshold"],
+                "p3_latency_ms": pr["Peak-3"]["latency_ms"],
+                "p3_snr": pr["Peak-3"]["snr"],
+                "p3_above_threshold": pr["Peak-3"]["above_threshold"],
+                "VER_detected": pr["VER_detected"],
+                "noise_rms": pr["noise_rms"],
+            })
+
         table = ax.table(
             cellText=table_data,
             colLabels=col_labels,
             cellLoc="center",
             loc="lower center",
-            bbox=[0.0, -0.48, 1.0, 0.28],
+            bbox=[0.0, -0.52, 1.0, 0.30],
         )
         table.auto_set_font_size(False)
-        table.set_fontsize(8)
-        fig.subplots_adjust(bottom=0.38)
-        plt.tight_layout(rect=[0, 0.28, 1, 1])
+        table.set_fontsize(7)
+        fig.subplots_adjust(bottom=0.42)
+        plt.tight_layout(rect=[0, 0.30, 1, 1])
 
         # --- Determine output directory ---
         if self.data_file:
@@ -1563,8 +1634,15 @@ class VERMainWindow(QMainWindow):
 
         try:
             fig.savefig(png_path, dpi=150, bbox_inches="tight")
+            csv_fields = [
+                "mode",
+                "p1_latency_ms", "p1_snr", "p1_above_threshold",
+                "p2_latency_ms", "p2_snr", "p2_above_threshold",
+                "p3_latency_ms", "p3_snr", "p3_above_threshold",
+                "VER_detected", "noise_rms",
+            ]
             with open(csv_path, "w", newline="") as fh:
-                writer = csv.DictWriter(fh, fieldnames=list(metrics[0].keys()))
+                writer = csv.DictWriter(fh, fieldnames=csv_fields, extrasaction="ignore")
                 writer.writeheader()
                 writer.writerows(metrics)
         except Exception as exc:

@@ -156,7 +156,7 @@ def test_settings_manager_backfills_peak_detection_mode(monkeypatch, tmp_path):
 
     reloaded = SettingsManager().load_settings()
 
-    assert reloaded["CLASSIFIER_CONFIG"]["peak_detection_mode"] == "legacy_top3"
+    assert reloaded["CLASSIFIER_CONFIG"]["peak_detection_mode"] == "dominant_opposite_neighbors"
 
 
 def test_analysis_complete_action_helpers_cover_all_choices():
