@@ -23,4 +23,4 @@ SCOPE_FILTER_MODES = [
 ]
 
 # The default mode used when the filter is first constructed.
-DEFAULT_SCOPE_FILTER_MODE = SCOPE_FILTER_BUTTERWORTH
+DEFAULT_SCOPE_FILTER_MODE = SCOPE_FILTER_FIR

@@ -41,10 +41,15 @@ class BandpassFilter:
         self.nyquist = self.sample_rate / 2.0
         low = self.config["lowcut_hz"] / self.nyquist
         high = self.config["highcut_hz"] / self.nyquist
-        if not (0.0 < low < high < 1.0):
-            raise ValueError("Invalid bandpass bounds. Require 0 < lowcut < highcut < Nyquist")
-
-        self.sos = butter(self.config["order"], [low, high], btype="band", output="sos")
+        if self.config["lowcut_hz"] == 0.0:
+            # Low cut of 0 Hz → lowpass-only design
+            if not (0.0 < high < 1.0):
+                raise ValueError("Invalid lowpass bound. Require 0 < highcut_hz < Nyquist")
+            self.sos = butter(self.config["order"], high, btype="low", output="sos")
+        else:
+            if not (0.0 < low < high < 1.0):
+                raise ValueError("Invalid bandpass bounds. Require 0 < lowcut < highcut < Nyquist")
+            self.sos = butter(self.config["order"], [low, high], btype="band", output="sos")
         self._zi = sosfilt_zi(self.sos)
         self._dc_mean = 0.0
         self._dc_count = 0
@@ -89,7 +94,10 @@ class BandpassFilter:
 
                 low = self.config["lowcut_hz"] / self.nyquist
                 high = self.config["highcut_hz"] / self.nyquist
-                taps = firwin(numtaps, [low, high], pass_zero=False)
+                if self.config["lowcut_hz"] == 0.0:
+                    taps = firwin(numtaps, high, pass_zero=True)
+                else:
+                    taps = firwin(numtaps, [low, high], pass_zero=False)
                 y = filtfilt(taps, 1.0, centered, padlen=safe_padlen)
 
             elif self.scope_mode == SCOPE_FILTER_SAVGOL:

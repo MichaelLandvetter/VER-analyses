@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 import logging
+import csv
 import shutil
 import sys
 import time
+from datetime import datetime
 import serial
 import serial.tools.list_ports
 from pathlib import Path
 
 import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import pyqtgraph as pg
 import ver_classifier
 import ver_peaks
@@ -50,7 +55,13 @@ from PyQt6.QtWidgets import (
 
 from ver_acquisition import FileAcquisitionSimulator, SerialAcquisitionSource
 from ver_config import ACQ_CONFIG, EPOCH_CONFIG, FILE_CONFIG, FILE_FORMATS, FILTER_CONFIG, SERIAL_CONFIG, SPECIES
-from ver_constants import DEFAULT_SCOPE_FILTER_MODE, SCOPE_FILTER_MODES
+from ver_constants import (
+    DEFAULT_SCOPE_FILTER_MODE,
+    SCOPE_FILTER_BUTTERWORTH,
+    SCOPE_FILTER_FIR,
+    SCOPE_FILTER_MODES,
+    SCOPE_FILTER_SAVGOL,
+)
 from ver_display import VERDisplayWidget
 from ver_filter import BandpassFilter
 from ver_logging import setup_logging
@@ -773,7 +784,7 @@ class VERMainWindow(QMainWindow):
 
         # --- Filter Widgets ---
         self.low_spin = QSpinBox()
-        self.low_spin.setRange(1, 120)
+        self.low_spin.setRange(0, 120)
         self.low_spin.setValue(int(FILTER_CONFIG["lowcut_hz"]))
         self.high_spin = QSpinBox()
         self.high_spin.setRange(2, 124)
@@ -782,6 +793,12 @@ class VERMainWindow(QMainWindow):
         # Add the Scope Filter Dropdown
         self.scope_filter_combo = QComboBox()
         self.scope_filter_combo.addItems(SCOPE_FILTER_MODES)
+        _saved_filter_mode = self.settings_manager.settings.get("FILTER_CONFIG", {}).get(
+            "scope_filter_mode", DEFAULT_SCOPE_FILTER_MODE
+        )
+        _saved_idx = self.scope_filter_combo.findText(_saved_filter_mode)
+        self.scope_filter_combo.setCurrentIndex(_saved_idx if _saved_idx >= 0 else
+                                                self.scope_filter_combo.findText(DEFAULT_SCOPE_FILTER_MODE))
 
         apply_filter_btn = QPushButton("Apply Filter")
         apply_filter_btn.clicked.connect(self._apply_filter_settings)
@@ -866,6 +883,13 @@ class VERMainWindow(QMainWindow):
         layout3.addRow("High cut (Hz):", self.high_spin)
         layout3.addRow("Scope Filter:", self.scope_filter_combo) 
         layout3.addRow(apply_filter_btn)
+        filter_compare_btn = QPushButton("Filter Compare")
+        filter_compare_btn.setToolTip(
+            "Overlay Butterworth / FIR / Savitzky-Golay averages for the current dataset\n"
+            "and save a diagnostic figure + metrics CSV to the report folder."
+        )
+        filter_compare_btn.clicked.connect(self._run_filter_compare)
+        layout3.addRow(filter_compare_btn)
         group3.setLayout(layout3)
         top_bar.addWidget(group3)
         
@@ -1362,6 +1386,10 @@ class VERMainWindow(QMainWindow):
         new_settings.setdefault("METADATA_CONFIG", {})
         new_settings["METADATA_CONFIG"]["species"] = self._selected_species_value()
 
+        # Persist the active scope filter mode so it survives restarts
+        new_settings.setdefault("FILTER_CONFIG", {})
+        new_settings["FILTER_CONFIG"]["scope_filter_mode"] = self.scope_filter_combo.currentText()
+
         self._sync_artifact_settings_from_ui()
 
         # Save to JSON and apply to live config!
@@ -1379,6 +1407,174 @@ class VERMainWindow(QMainWindow):
             return
         self.bandpass.redesign(low, high)
         self.display.set_status(f"Filter updated: {low:.1f}-{high:.1f} Hz")
+
+    def _run_filter_compare(self):
+        """Compute scope-averages for all three filter modes and show an overlay diagnostic."""
+        # Collect raw (unfiltered) epochs to compare filters on identical data.
+        raw_epochs: list | None = None
+        source_label = ""
+
+        # Prefer current session's individual raw epochs; fall back to stored raw average.
+        if hasattr(self.scope, "raw_session_epochs") and self.scope.raw_session_epochs:
+            raw_epochs = list(self.scope.raw_session_epochs)
+            source_label = f"current session ({len(raw_epochs)} epochs)"
+        elif hasattr(self.scope, "raw_session_averages") and self.scope.raw_session_averages:
+            raw_avg = self.scope.raw_session_averages[-1]
+            raw_epochs = [raw_avg]
+            session_num = len(self.scope.raw_session_averages)
+            source_label = f"session {session_num} average"
+
+        if not raw_epochs:
+            QMessageBox.information(
+                self,
+                "Filter Compare",
+                "No epoch data available yet.\nRun an analysis first, then click Filter Compare.",
+            )
+            return
+
+        low = float(self.low_spin.value())
+        high = float(self.high_spin.value())
+        if low >= high:
+            QMessageBox.warning(self, "Invalid filter", "Low cut must be less than high cut.")
+            return
+
+        from ver_config import ACQ_CONFIG as _ACQ, FILTER_CONFIG as _FC
+        filter_cfg = {
+            "lowcut_hz": low,
+            "highcut_hz": high,
+            "order": _FC.get("order", 4),
+            "sample_rate": _ACQ["sample_rate"],
+        }
+
+        time_ms = self.scope.epoch_time_ms
+        modes = [SCOPE_FILTER_BUTTERWORTH, SCOPE_FILTER_FIR, SCOPE_FILTER_SAVGOL]
+        colors = ["#1f77b4", "#ff7f0e", "#2ca02c"]
+        averages: dict[str, np.ndarray] = {}
+
+        try:
+            for mode in modes:
+                f = BandpassFilter(filter_cfg)
+                f.set_scope_mode(mode)
+                filtered = []
+                for ep in raw_epochs:
+                    ep_arr = np.asarray(ep, dtype=float)
+                    pre_samples = self.scope.pre_samples
+                    baseline = float(np.mean(ep_arr[:pre_samples])) if pre_samples > 0 else float(np.mean(ep_arr))
+                    filtered.append(f.apply_zero_phase(ep_arr, baseline_mean=baseline))
+                averages[mode] = np.mean(np.vstack(filtered), axis=0)
+        except Exception as exc:
+            QMessageBox.critical(self, "Filter Compare Error", f"Failed to apply filters:\n{exc}")
+            return
+
+        # --- Detect first trough and first peak in [0, 200] ms ---
+        post_mask = (time_ms >= 0) & (time_ms <= 200)
+
+        def _first_extrema(waveform: np.ndarray):
+            seg = waveform[post_mask]
+            seg_t = time_ms[post_mask]
+            if seg.size == 0:
+                return float("nan"), float("nan"), float("nan"), float("nan")
+            trough_idx = int(np.argmin(seg))
+            peak_idx = int(np.argmax(seg))
+            return float(seg_t[trough_idx]), float(seg[trough_idx]), float(seg_t[peak_idx]), float(seg[peak_idx])
+
+        metrics: list[dict] = []
+        fir_trough_t, _, fir_peak_t, _ = _first_extrema(averages[SCOPE_FILTER_FIR])
+
+        for mode in modes:
+            tr_t, tr_amp, pk_t, pk_amp = _first_extrema(averages[mode])
+            t2p = pk_amp - tr_amp
+            metrics.append({
+                "mode": mode,
+                "trough_latency_ms": tr_t,
+                "peak_latency_ms": pk_t,
+                "trough_to_peak_uv": t2p,
+                "delta_trough_vs_fir_ms": tr_t - fir_trough_t,
+                "delta_peak_vs_fir_ms": pk_t - fir_peak_t,
+            })
+
+        # --- Build figure ---
+        fig, ax = plt.subplots(figsize=(10, 5), facecolor="white")
+        for mode, color in zip(modes, colors):
+            waveform = averages[mode]
+            ax.plot(time_ms, waveform, label=mode, color=color, linewidth=1.5)
+            tr_t, tr_amp, pk_t, pk_amp = _first_extrema(waveform)
+            if not np.isnan(tr_t):
+                ax.plot(tr_t, tr_amp, "v", color=color, markersize=8)
+                ax.annotate(f"{tr_t:.0f} ms", (tr_t, tr_amp), textcoords="offset points",
+                            xytext=(4, -12), fontsize=7, color=color)
+            if not np.isnan(pk_t):
+                ax.plot(pk_t, pk_amp, "^", color=color, markersize=8)
+                ax.annotate(f"{pk_t:.0f} ms", (pk_t, pk_amp), textcoords="offset points",
+                            xytext=(4, 4), fontsize=7, color=color)
+
+        ax.axvline(0, color="grey", linewidth=0.8, linestyle="--")
+        ax.axhline(0, color="grey", linewidth=0.6, linestyle=":")
+        ax.set_xlabel("Time (ms)")
+        ax.set_ylabel("Amplitude (µV)")
+        ax.set_title(
+            f"Filter Compare  —  {low:.0f}–{high:.0f} Hz  |  {source_label}\n"
+            "▼ first trough   ▲ first peak   (0–200 ms window)"
+        )
+        ax.legend(loc="upper right", fontsize=9)
+
+        # Metrics table below the plot
+        col_labels = ["Mode", "Trough (ms)", "Peak (ms)", "T-to-P (µV)", "ΔTrough vs FIR", "ΔPeak vs FIR"]
+        table_data = [
+            [
+                m["mode"],
+                f"{m['trough_latency_ms']:.1f}",
+                f"{m['peak_latency_ms']:.1f}",
+                f"{m['trough_to_peak_uv']:.4f}",
+                f"{m['delta_trough_vs_fir_ms']:+.1f}",
+                f"{m['delta_peak_vs_fir_ms']:+.1f}",
+            ]
+            for m in metrics
+        ]
+        table = ax.table(
+            cellText=table_data,
+            colLabels=col_labels,
+            cellLoc="center",
+            loc="lower center",
+            bbox=[0.0, -0.48, 1.0, 0.28],
+        )
+        table.auto_set_font_size(False)
+        table.set_fontsize(8)
+        fig.subplots_adjust(bottom=0.38)
+        plt.tight_layout(rect=[0, 0.28, 1, 1])
+
+        # --- Determine output directory ---
+        if self.data_file:
+            out_dir = Path(self.data_file).parent
+        else:
+            out_dir_str = QFileDialog.getExistingDirectory(self, "Select folder to save Filter Compare output")
+            out_dir = Path(out_dir_str) if out_dir_str else None
+            if not out_dir or not out_dir.is_dir():
+                plt.close(fig)
+                return
+
+        stem = Path(self.data_file).stem if self.data_file else "live"
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        png_path = out_dir / f"{stem}_filter_compare_{ts}.png"
+        csv_path = out_dir / f"{stem}_filter_compare_{ts}.csv"
+
+        try:
+            fig.savefig(png_path, dpi=150, bbox_inches="tight")
+            with open(csv_path, "w", newline="") as fh:
+                writer = csv.DictWriter(fh, fieldnames=list(metrics[0].keys()))
+                writer.writeheader()
+                writer.writerows(metrics)
+        except Exception as exc:
+            QMessageBox.critical(self, "Filter Compare", f"Could not save output:\n{exc}")
+            return
+        finally:
+            plt.close(fig)
+
+        QMessageBox.information(
+            self,
+            "Filter Compare",
+            f"Diagnostic saved to:\n{png_path}\n{csv_path}",
+        )
 
     def _handle_sample(self, row: np.ndarray):
         samples = np.asarray(row, dtype=float)
