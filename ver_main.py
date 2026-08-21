@@ -1574,7 +1574,13 @@ class VERMainWindow(QMainWindow):
             if pr is None:
                 row = [mode] + ["—"] * (len(col_labels) - 1)
                 table_data.append(row)
-                metrics.append({"mode": mode})
+                metrics.append({
+                    "mode": mode,
+                    "p1_latency_ms": "", "p1_snr": "", "p1_above_threshold": "",
+                    "p2_latency_ms": "", "p2_snr": "", "p2_above_threshold": "",
+                    "p3_latency_ms": "", "p3_snr": "", "p3_above_threshold": "",
+                    "VER_detected": "", "noise_rms": "",
+                })
                 continue
             row = [
                 mode,
