@@ -32,7 +32,9 @@ class VERScopeProcessor:
         self.prev_trigger = 0.0
         self.pending_epochs: List[Dict[str, object]] = []
         self.session_epochs: List[np.ndarray] = []
+        self.raw_session_epochs: List[np.ndarray] = []
         self.session_averages: List[np.ndarray] = []
+        self.raw_session_averages: List[np.ndarray] = []
         self.flash_count = 0          # total trigger events (governs session completion)
         self.flash_count_accepted = 0  # epochs that passed artifact rejection
         self.session_index = 0
@@ -56,8 +58,15 @@ class VERScopeProcessor:
         completed_session_number = self.session_index + 1
         completed_flash_count_accepted = self.flash_count_accepted
         self.session_averages.append(session_average)
+        # Store the mean of raw (unfiltered) epochs for the Filter Compare diagnostic.
+        if self.raw_session_epochs:
+            raw_avg = np.mean(np.vstack(self.raw_session_epochs), axis=0)
+        else:
+            raw_avg = np.zeros(self.epoch_samples)
+        self.raw_session_averages.append(raw_avg)
         self.session_index += 1
         self.session_epochs = []
+        self.raw_session_epochs = []
         self.running_average = None
         self.flash_count = 0
         self.flash_count_accepted = 0
@@ -116,6 +125,7 @@ class VERScopeProcessor:
 
                 if not epoch_rejected:
                     self.session_epochs.append(filtered_epoch)
+                    self.raw_session_epochs.append(epoch)
                     self.running_average = np.mean(np.vstack(self.session_epochs), axis=0)
                     self.flash_count_accepted += 1
 
