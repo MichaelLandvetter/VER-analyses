@@ -12,8 +12,9 @@ import ver_config
 log = logging.getLogger(__name__)
 
 MIN_NOISE_RMS = 1e-10
-DEFAULT_PEAK_DETECTION_MODE = "legacy_top3"
+DEFAULT_PEAK_DETECTION_MODE = "dominant_opposite_neighbors"
 DOMINANT_OPPOSITE_NEIGHBORS_MODE = "dominant_opposite_neighbors"
+LEGACY_PEAK_DETECTION_MODE = "legacy_top3"
 
 # Module-level settings cache — loaded once on first use and replaced when
 # an explicit ``classifier_cfg`` dict is passed in (e.g. after user saves
@@ -84,14 +85,13 @@ def _find_extrema_indices(segment: np.ndarray) -> np.ndarray:
 
 
 def _resolve_peak_detection_mode(mode: str | None) -> str:
-    """Return a supported peak-detection mode, falling back to the legacy mode."""
+    """Return a supported peak-detection mode, falling back to the default."""
 
     if mode == DOMINANT_OPPOSITE_NEIGHBORS_MODE:
         return DOMINANT_OPPOSITE_NEIGHBORS_MODE
-    if mode is not None and mode not in (
-        DEFAULT_PEAK_DETECTION_MODE,
-        DOMINANT_OPPOSITE_NEIGHBORS_MODE,
-    ):
+    if mode == LEGACY_PEAK_DETECTION_MODE:
+        return LEGACY_PEAK_DETECTION_MODE
+    if mode is not None:
         log.warning(
             "Unknown peak_detection_mode %r; falling back to %s",
             mode,
