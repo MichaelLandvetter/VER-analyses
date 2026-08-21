@@ -1434,7 +1434,7 @@ class VERMainWindow(QMainWindow):
 
         low = float(self.low_spin.value())
         high = float(self.high_spin.value())
-        if low >= high:
+        if low > high or high <= 0:
             QMessageBox.warning(self, "Invalid filter", "Low cut must be less than high cut.")
             return
 
@@ -1480,17 +1480,20 @@ class VERMainWindow(QMainWindow):
 
         metrics: list[dict] = []
         fir_trough_t, _, fir_peak_t, _ = _first_extrema(averages[SCOPE_FILTER_FIR])
+        fir_has_data = not np.isnan(fir_trough_t)
 
         for mode in modes:
             tr_t, tr_amp, pk_t, pk_amp = _first_extrema(averages[mode])
             t2p = pk_amp - tr_amp
+            delta_trough = (tr_t - fir_trough_t) if fir_has_data and not np.isnan(tr_t) else float("nan")
+            delta_peak = (pk_t - fir_peak_t) if fir_has_data and not np.isnan(pk_t) else float("nan")
             metrics.append({
                 "mode": mode,
                 "trough_latency_ms": tr_t,
                 "peak_latency_ms": pk_t,
                 "trough_to_peak_uv": t2p,
-                "delta_trough_vs_fir_ms": tr_t - fir_trough_t,
-                "delta_peak_vs_fir_ms": pk_t - fir_peak_t,
+                "delta_trough_vs_fir_ms": delta_trough,
+                "delta_peak_vs_fir_ms": delta_peak,
             })
 
         # --- Build figure ---
