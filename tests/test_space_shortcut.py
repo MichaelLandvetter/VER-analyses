@@ -1,7 +1,4 @@
-"""Tests for the Space-bar Start/Stop/Resume shortcut in VERMainWindow.
-
-These tests verify source-level contracts without instantiating Qt widgets.
-"""
+"""Source-level contracts for the Space-bar transport shortcut in VERMainWindow."""
 
 import ast
 from pathlib import Path
@@ -10,10 +7,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 _VER_MAIN_SRC = (REPO_ROOT / "ver_main.py").read_text(encoding="utf-8")
 _VER_MAIN_TREE = ast.parse(_VER_MAIN_SRC)
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _class_method_names(class_name: str) -> list[str]:
     for node in _VER_MAIN_TREE.body:
@@ -31,98 +24,79 @@ def _method_src(class_name: str, method_name: str) -> str:
     return ""
 
 
-# ---------------------------------------------------------------------------
-# Structure tests
-# ---------------------------------------------------------------------------
-
-def test_ver_main_has_key_press_event():
-    assert "keyPressEvent" in _class_method_names("VERMainWindow"), (
-        "VERMainWindow must implement keyPressEvent to handle the Space shortcut"
-    )
+def test_ver_main_has_space_shortcut_methods():
+    method_names = _class_method_names("VERMainWindow")
+    assert "_configure_space_shortcut" in method_names
+    assert "handle_space_toggle" in method_names
+    assert "_focused_widget_blocks_space_shortcut" in method_names
+    assert "_update_transport_button_labels" in method_names
 
 
-def test_key_press_event_checks_space_key():
-    src = _method_src("VERMainWindow", "keyPressEvent")
-    assert "Key_Space" in src, (
-        "keyPressEvent must check for Qt.Key.Key_Space"
-    )
+def test_init_installs_space_shortcut_and_event_filter():
+    src = _method_src("VERMainWindow", "__init__")
+    assert "self._configure_space_shortcut()" in src
+    assert "installEventFilter(self)" in src
 
 
-def test_key_press_event_guards_editable_widgets():
-    src = _method_src("VERMainWindow", "keyPressEvent")
-    # Must check focused widget type to avoid triggering in text-entry fields
-    assert "focusWidget" in src, (
-        "keyPressEvent must call QApplication.focusWidget() "
-        "to detect focus in text-entry controls"
-    )
-    assert "isinstance" in src, (
-        "keyPressEvent must use isinstance() to guard editable widget types"
-    )
+def test_configure_space_shortcut_uses_single_window_shortcut():
+    src = _method_src("VERMainWindow", "_configure_space_shortcut")
+    assert "QShortcut" in src
+    assert "Key_Space" in src
+    assert "WindowShortcut" in src
+    assert "activated.connect(self.handle_space_toggle)" in src
 
 
-def test_key_press_event_calls_stop_acquisition_when_running():
-    src = _method_src("VERMainWindow", "keyPressEvent")
-    assert "stop_acquisition" in src, (
-        "keyPressEvent must call stop_acquisition() when analysis is running"
-    )
+def test_handle_space_toggle_routes_by_transport_state():
+    src = _method_src("VERMainWindow", "handle_space_toggle")
+    assert "_transport_state()" in src
+    assert 'state == "running"' in src
+    assert "stop_acquisition()" in src
+    assert "start_acquisition()" in src
+    assert "log.debug" in src
 
 
-def test_key_press_event_calls_start_acquisition_when_paused():
-    src = _method_src("VERMainWindow", "keyPressEvent")
-    assert "start_acquisition" in src, (
-        "keyPressEvent must call start_acquisition() when analysis is paused/resumed"
-    )
+def test_space_shortcut_guard_checks_editable_focus():
+    src = _method_src("VERMainWindow", "_focused_widget_blocks_space_shortcut")
+    assert "focusWidget" in src
+    assert "QLineEdit" in src
+    assert "QAbstractSpinBox" in src
+    assert "QTextEdit" in src
 
 
-def test_key_press_event_triggers_start_when_idle():
-    src = _method_src("VERMainWindow", "keyPressEvent")
-    # Space must also fire for the idle Start state.
-    assert 'startswith("Start")' in src, (
-        "keyPressEvent must branch on 'Start' button text so Space triggers "
-        "the initial Start action from idle state"
-    )
+def test_event_filter_blocks_shortcut_override_for_editable_focus():
+    src = _method_src("VERMainWindow", "eventFilter")
+    assert "ShortcutOverride" in src
+    assert "Key_Space" in src
+    assert "_focused_widget_blocks_space_shortcut()" in src
+    assert "event.accept()" in src
 
 
-def test_start_btn_initial_label_includes_space_hint():
+def test_build_ui_disables_default_button_behavior_for_space_conflicts():
     src = _method_src("VERMainWindow", "_build_ui")
-    assert 'Start  (Space)' in src, (
-        "_build_ui must set the start button initial label to 'Start  (Space)' "
-        "so the Space shortcut hint is visible in the idle state"
-    )
+    assert 'QPushButton("Open Data File")' in src
+    assert "open_btn.setAutoDefault(False)" in src
+    assert "open_btn.setDefault(False)" in src
+    assert "self.start_btn.setAutoDefault(False)" in src
+    assert "self.start_btn.setDefault(False)" in src
+    assert "self.stop_btn.setAutoDefault(False)" in src
+    assert "self.stop_btn.setDefault(False)" in src
 
 
-def test_stop_acquisition_sets_resume_with_space_hint():
-    src = _method_src("VERMainWindow", "stop_acquisition")
-    assert "Resume  (Space)" in src, (
-        "stop_acquisition must set start_btn text to 'Resume  (Space)' (two spaces before paren) "
-        "to inform users about the keyboard shortcut"
-    )
+def test_transport_button_hints_remain_state_specific():
+    src = _method_src("VERMainWindow", "_update_transport_button_labels")
+    assert '"Stop  (Space)"' in src
+    assert '"Resume  (Space)"' in src
+    assert '"Start  (Space)"' in src
+    assert 'self.stop_btn.setText("Stop")' in src
 
 
-def test_stop_acquisition_removes_space_hint_from_stop_btn():
-    src = _method_src("VERMainWindow", "stop_acquisition")
-    assert 'stop_btn' in src, (
-        "stop_acquisition must update stop_btn text to remove the (Space) hint "
-        "when analysis is paused"
-    )
-    # The stop_btn should be set to plain "Stop", not "Stop  (Space)"
-    assert '"Stop  (Space)"' not in src, (
-        "stop_acquisition must not set stop_btn to 'Stop  (Space)' — "
-        "the Space hint should only appear on stop_btn while running"
-    )
+def test_running_and_paused_transitions_use_shared_label_helper():
+    assert "_update_transport_button_labels()" in _method_src("VERMainWindow", "start_acquisition")
+    assert "_update_transport_button_labels()" in _method_src("VERMainWindow", "stop_acquisition")
+    assert "_update_transport_button_labels()" in _method_src("VERMainWindow", "reset_all")
+    assert "_update_transport_button_labels()" in _method_src("VERMainWindow", "_handle_eof")
 
 
-def test_start_acquisition_sets_stop_btn_space_hint():
-    src = _method_src("VERMainWindow", "start_acquisition")
-    assert '"Stop  (Space)"' in src, (
-        "start_acquisition must set stop_btn text to 'Stop  (Space)' "
-        "when the session transitions to the running state"
-    )
-
-
-def test_key_press_event_delegates_to_super_when_not_handled():
+def test_key_press_event_no_longer_handles_space_transport():
     src = _method_src("VERMainWindow", "keyPressEvent")
-    assert "super().keyPressEvent" in src, (
-        "keyPressEvent must call super().keyPressEvent(event) for unhandled keys "
-        "to preserve default Qt behavior"
-    )
+    assert src == "", "Space transport should be handled only by the dedicated QShortcut"
