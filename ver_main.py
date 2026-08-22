@@ -24,8 +24,8 @@ import ver_peaks
 if getattr(sys, 'frozen', False):
     import pyi_splash
 
-from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal
-from PyQt6.QtGui import QAction, QTextOption
+from PyQt6.QtCore import QEvent, QObject, QThread, Qt, pyqtSignal
+from PyQt6.QtGui import QAction, QKeySequence, QShortcut, QTextOption
 from PyQt6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -723,6 +723,8 @@ class VERMainWindow(QMainWindow):
         self._build_ui()
         self._sync_artifact_settings_from_ui()
         self._build_menu()
+        self._configure_space_shortcut()
+        QApplication.instance().installEventFilter(self)
 
     def _species_options(self) -> list[str]:
         """Return the runtime species choices exposed by ver_config."""
@@ -798,6 +800,53 @@ class VERMainWindow(QMainWindow):
         else:
             self.max_speed_warning.hide()
 
+    def _configure_space_shortcut(self) -> None:
+        self.space_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
+        self.space_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        self.space_shortcut.activated.connect(self.handle_space_toggle)
+
+    def _focused_widget_blocks_space_shortcut(self) -> bool:
+        focused = QApplication.focusWidget()
+        return isinstance(focused, (QLineEdit, QAbstractSpinBox, QTextEdit))
+
+    def _transport_state(self) -> str:
+        if self.worker is None:
+            return "idle"
+        if getattr(self.worker, "_paused", False):
+            return "paused"
+        return "running"
+
+    def _update_transport_button_labels(self) -> None:
+        state = self._transport_state()
+        if state == "running":
+            self.start_btn.setText("Running...")
+            self.stop_btn.setText("Stop  (Space)")
+            return
+        self.stop_btn.setText("Stop")
+        if state == "paused":
+            self.start_btn.setText("Resume  (Space)")
+            return
+        self.start_btn.setText("Start  (Space)")
+
+    def handle_space_toggle(self) -> None:
+        if self._focused_widget_blocks_space_shortcut():
+            return
+        state = self._transport_state()
+        log.debug("Space transport toggle requested while state=%s", state)
+        if state == "running":
+            self.stop_acquisition()
+            return
+        self.start_acquisition()
+
+    def eventFilter(self, watched, event):
+        if (
+            event.type() == QEvent.Type.ShortcutOverride
+            and event.key() == Qt.Key.Key_Space
+            and self._focused_widget_blocks_space_shortcut()
+        ):
+            event.accept()
+        return super().eventFilter(watched, event)
+
     def _on_speed_changed(self, text: str):
         # ... update this to call the new function ...
         self._update_warning_visibility()
@@ -822,6 +871,8 @@ class VERMainWindow(QMainWindow):
         # --- Data File Widgets ---
         self.file_label = QLabel("No file selected")
         open_btn = QPushButton("Open Data File")
+        open_btn.setAutoDefault(False)
+        open_btn.setDefault(False)
         open_btn.clicked.connect(lambda: self._select_data_file(initial=False))
         self.suggest_exclusion_btn = QPushButton("Set Exclusion")
         self.suggest_exclusion_btn.setEnabled(False)
@@ -871,6 +922,10 @@ class VERMainWindow(QMainWindow):
         self.stop_btn = QPushButton("Stop")
         self.reset_btn = QPushButton("Reset")
         self.save_btn = QPushButton("Save Report")
+        self.start_btn.setAutoDefault(False)
+        self.start_btn.setDefault(False)
+        self.stop_btn.setAutoDefault(False)
+        self.stop_btn.setDefault(False)
         self.start_btn.clicked.connect(self.start_acquisition)
         self.stop_btn.clicked.connect(self.stop_acquisition)
         self.reset_btn.clicked.connect(self.reset_all)
@@ -1295,7 +1350,7 @@ class VERMainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Acquisition Error", f"Failed to initialize data source:\n{str(e)}")
             self.display.set_status("Ready")
-            self.start_btn.setText("Start  (Space)")
+            self._update_transport_button_labels()
             self._update_warning_visibility()
             return None
 
@@ -1324,6 +1379,22 @@ class VERMainWindow(QMainWindow):
         self.worker_thread = None
         
     def start_acquisition(self):
+        update_transport_labels = getattr(self, "_update_transport_button_labels", None)
+
+        def _apply_running_labels() -> None:
+            if callable(update_transport_labels):
+                update_transport_labels()
+                return
+            self.start_btn.setText("Running...")
+            self.stop_btn.setText("Stop  (Space)")
+
+        def _apply_idle_labels() -> None:
+            if callable(update_transport_labels):
+                update_transport_labels()
+                return
+            self.start_btn.setText("Start  (Space)")
+            self.stop_btn.setText("Stop")
+
         current_speed = self._get_speed_factor()
         self._sync_artifact_settings_from_ui()
         _refresh_runtime_classifier_settings(self.settings_manager.settings.get("CLASSIFIER_CONFIG", {}))
@@ -1346,7 +1417,10 @@ class VERMainWindow(QMainWindow):
             
             # Start a brand new worker with the current speed
             self._start_worker(current_speed)
-            self.start_btn.setText("Running...")
+            if self.worker is None:
+                _apply_idle_labels()
+                self._update_warning_visibility()
+                return
             self._update_warning_visibility() # This checks the speed and shows the label
         
         else:
@@ -1356,8 +1430,7 @@ class VERMainWindow(QMainWindow):
                 self.worker.source.speed_factor = current_speed
 
         # --- NEW STATUS TEXT LOGIC (Moved here so it doesn't get erased!) ---
-        self.start_btn.setText("Running...")
-        self.stop_btn.setText("Stop  (Space)")
+        _apply_running_labels()
         if current_speed is None:
             self.display.set_status("⚡ Maximum Speed: Live graphs paused. Analyzing in background...")
         else:
@@ -1375,8 +1448,7 @@ class VERMainWindow(QMainWindow):
     def stop_acquisition(self):
         if self.worker is not None:
             self.worker.pause_stream()
-        self.start_btn.setText("Resume  (Space)")
-        self.stop_btn.setText("Stop")
+        self._update_transport_button_labels()
             
     def reset_all(self):
         self.bandpass = BandpassFilter({
@@ -1398,10 +1470,9 @@ class VERMainWindow(QMainWindow):
         self._sync_artifact_settings_from_ui()
         self.display.reset_all()
         self._set_progress(0, 0) 
-        self.start_btn.setText("Start  (Space)")
-        self.stop_btn.setText("Stop")
         self._shutdown_worker()
         self.worker = None
+        self._update_transport_button_labels()
 
     def _sync_artifact_settings_from_ui(self, *_args):
         if not hasattr(self, "set_artifact_enabled") or not hasattr(self, "set_artifact_threshold"):
@@ -2090,9 +2161,8 @@ class VERMainWindow(QMainWindow):
                     has_session_averages=bool(self.scope.session_averages),
                 )
             )
-            self.start_btn.setText("Start  (Space)")
-            self.stop_btn.setText("Stop")
             self._shutdown_worker()
+            self._update_transport_button_labels()
             self.max_speed_warning.hide()
 
     def _handle_worker_error(self, message: str):
@@ -2392,32 +2462,6 @@ class VERMainWindow(QMainWindow):
             f"Waveforms CSV: {waveforms_csv_name}\n"
             f"RAW Data: {raw_file_name}"
         )
-
-    def keyPressEvent(self, event):
-        """Handle Space bar as a single deterministic state-toggle.
-
-        - Idle (Start): Space triggers Start.
-        - Running: Space triggers Stop.
-        - Paused (Resume): Space triggers Resume.
-
-        Space is suppressed when focus is in a text-entry or spin-box widget
-        so that normal typing is never interrupted.
-        """
-        if event.key() == Qt.Key.Key_Space:
-            focused = QApplication.focusWidget()
-            if isinstance(focused, (QLineEdit, QAbstractSpinBox, QTextEdit)):
-                super().keyPressEvent(event)
-                return
-            btn_text = self.start_btn.text()
-            if btn_text.startswith("Running"):
-                self.stop_acquisition()
-                event.accept()
-                return
-            elif btn_text.startswith("Resume") or btn_text.startswith("Start"):
-                self.start_acquisition()
-                event.accept()
-                return
-        super().keyPressEvent(event)
 
     def closeEvent(self, event):
         self._shutdown_worker()
