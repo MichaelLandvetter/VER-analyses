@@ -325,6 +325,7 @@ def test_start_acquisition_refreshes_live_classifier_settings_before_rerun():
         worker=None,
         _start_worker=lambda speed: setattr(stub, "worker", _DummyWorker()),
         start_btn=_DummyButton(),
+        stop_btn=_DummyButton(),
         _update_warning_visibility=lambda: None,
         display=_DummyDisplay(),
         tabs=_DummyTabs(),
