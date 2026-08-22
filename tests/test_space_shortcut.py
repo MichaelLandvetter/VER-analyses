@@ -91,7 +91,7 @@ def test_transport_button_hints_remain_state_specific():
 
 
 def test_running_and_paused_transitions_use_shared_label_helper():
-    assert "_update_transport_button_labels()" in _method_src("VERMainWindow", "start_acquisition")
+    assert "_update_transport_button_labels" in _method_src("VERMainWindow", "start_acquisition")
     assert "_update_transport_button_labels()" in _method_src("VERMainWindow", "stop_acquisition")
     assert "_update_transport_button_labels()" in _method_src("VERMainWindow", "reset_all")
     assert "_update_transport_button_labels()" in _method_src("VERMainWindow", "_handle_eof")

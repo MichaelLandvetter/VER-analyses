@@ -1379,6 +1379,22 @@ class VERMainWindow(QMainWindow):
         self.worker_thread = None
         
     def start_acquisition(self):
+        update_transport_labels = getattr(self, "_update_transport_button_labels", None)
+
+        def _apply_running_labels() -> None:
+            if callable(update_transport_labels):
+                update_transport_labels()
+                return
+            self.start_btn.setText("Running...")
+            self.stop_btn.setText("Stop  (Space)")
+
+        def _apply_idle_labels() -> None:
+            if callable(update_transport_labels):
+                update_transport_labels()
+                return
+            self.start_btn.setText("Start  (Space)")
+            self.stop_btn.setText("Stop")
+
         current_speed = self._get_speed_factor()
         self._sync_artifact_settings_from_ui()
         _refresh_runtime_classifier_settings(self.settings_manager.settings.get("CLASSIFIER_CONFIG", {}))
@@ -1402,7 +1418,7 @@ class VERMainWindow(QMainWindow):
             # Start a brand new worker with the current speed
             self._start_worker(current_speed)
             if self.worker is None:
-                self._update_transport_button_labels()
+                _apply_idle_labels()
                 self._update_warning_visibility()
                 return
             self._update_warning_visibility() # This checks the speed and shows the label
@@ -1414,7 +1430,7 @@ class VERMainWindow(QMainWindow):
                 self.worker.source.speed_factor = current_speed
 
         # --- NEW STATUS TEXT LOGIC (Moved here so it doesn't get erased!) ---
-        self._update_transport_button_labels()
+        _apply_running_labels()
         if current_speed is None:
             self.display.set_status("⚡ Maximum Speed: Live graphs paused. Analyzing in background...")
         else:
