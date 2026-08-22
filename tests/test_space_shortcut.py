@@ -1,4 +1,4 @@
-"""Tests for the Space-bar Stop/Resume shortcut in VERMainWindow.
+"""Tests for the Space-bar Start/Stop/Resume shortcut in VERMainWindow.
 
 These tests verify source-level contracts without instantiating Qt widgets.
 """
@@ -74,25 +74,20 @@ def test_key_press_event_calls_start_acquisition_when_paused():
     )
 
 
-def test_key_press_event_does_not_trigger_initial_start():
+def test_key_press_event_triggers_start_when_idle():
     src = _method_src("VERMainWindow", "keyPressEvent")
-    # Space must only fire for Running or Resume states, never for the Start state.
-    # Confirm the code branches on "Running" and "Resume" text.
-    assert 'startswith("Running")' in src or 'startswith("Resume")' in src, (
-        "keyPressEvent must use startswith checks for Running/Resume states"
-    )
-    # Confirm there is no branch that acts on the "Start" button text (which would
-    # accidentally bind Space to the initial Start action).
-    assert 'startswith("Start")' not in src and '== "Start"' not in src, (
-        "keyPressEvent must not branch on the 'Start' button text — "
-        "Space must never trigger the initial Start action"
+    # Space must also fire for the idle Start state.
+    assert 'startswith("Start")' in src, (
+        "keyPressEvent must branch on 'Start' button text so Space triggers "
+        "the initial Start action from idle state"
     )
 
 
-def test_stop_btn_label_includes_space_hint():
+def test_start_btn_initial_label_includes_space_hint():
     src = _method_src("VERMainWindow", "_build_ui")
-    assert "Stop  (Space)" in src, (
-        "_build_ui must set the stop button label to 'Stop  (Space)' (two spaces before paren)"
+    assert 'Start  (Space)' in src, (
+        "_build_ui must set the start button initial label to 'Start  (Space)' "
+        "so the Space shortcut hint is visible in the idle state"
     )
 
 
@@ -101,6 +96,27 @@ def test_stop_acquisition_sets_resume_with_space_hint():
     assert "Resume  (Space)" in src, (
         "stop_acquisition must set start_btn text to 'Resume  (Space)' (two spaces before paren) "
         "to inform users about the keyboard shortcut"
+    )
+
+
+def test_stop_acquisition_removes_space_hint_from_stop_btn():
+    src = _method_src("VERMainWindow", "stop_acquisition")
+    assert 'stop_btn' in src, (
+        "stop_acquisition must update stop_btn text to remove the (Space) hint "
+        "when analysis is paused"
+    )
+    # The stop_btn should be set to plain "Stop", not "Stop  (Space)"
+    assert '"Stop  (Space)"' not in src, (
+        "stop_acquisition must not set stop_btn to 'Stop  (Space)' — "
+        "the Space hint should only appear on stop_btn while running"
+    )
+
+
+def test_start_acquisition_sets_stop_btn_space_hint():
+    src = _method_src("VERMainWindow", "start_acquisition")
+    assert '"Stop  (Space)"' in src, (
+        "start_acquisition must set stop_btn text to 'Stop  (Space)' "
+        "when the session transitions to the running state"
     )
 
 

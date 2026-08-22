@@ -867,8 +867,8 @@ class VERMainWindow(QMainWindow):
         apply_filter_btn.clicked.connect(self._apply_filter_settings)
 
         # --- Control Widgets ---
-        self.start_btn = QPushButton("Start")
-        self.stop_btn = QPushButton("Stop  (Space)")
+        self.start_btn = QPushButton("Start  (Space)")
+        self.stop_btn = QPushButton("Stop")
         self.reset_btn = QPushButton("Reset")
         self.save_btn = QPushButton("Save Report")
         self.start_btn.clicked.connect(self.start_acquisition)
@@ -1295,10 +1295,10 @@ class VERMainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Acquisition Error", f"Failed to initialize data source:\n{str(e)}")
             self.display.set_status("Ready")
-            self.start_btn.setText("Start")
+            self.start_btn.setText("Start  (Space)")
             self._update_warning_visibility()
             return None
-        
+
     def _start_worker(self, speed_factor: float | None = 1.0):
         source = self._build_acquisition_source(speed_factor)
         if source is None:
@@ -1357,6 +1357,7 @@ class VERMainWindow(QMainWindow):
 
         # --- NEW STATUS TEXT LOGIC (Moved here so it doesn't get erased!) ---
         self.start_btn.setText("Running...")
+        self.stop_btn.setText("Stop  (Space)")
         if current_speed is None:
             self.display.set_status("⚡ Maximum Speed: Live graphs paused. Analyzing in background...")
         else:
@@ -1375,6 +1376,7 @@ class VERMainWindow(QMainWindow):
         if self.worker is not None:
             self.worker.pause_stream()
         self.start_btn.setText("Resume  (Space)")
+        self.stop_btn.setText("Stop")
             
     def reset_all(self):
         self.bandpass = BandpassFilter({
@@ -1396,7 +1398,8 @@ class VERMainWindow(QMainWindow):
         self._sync_artifact_settings_from_ui()
         self.display.reset_all()
         self._set_progress(0, 0) 
-        self.start_btn.setText("Start")
+        self.start_btn.setText("Start  (Space)")
+        self.stop_btn.setText("Stop")
         self._shutdown_worker()
         self.worker = None
 
@@ -2087,7 +2090,8 @@ class VERMainWindow(QMainWindow):
                     has_session_averages=bool(self.scope.session_averages),
                 )
             )
-            self.start_btn.setText("Start")
+            self.start_btn.setText("Start  (Space)")
+            self.stop_btn.setText("Stop")
             self._shutdown_worker()
             self.max_speed_warning.hide()
 
@@ -2390,13 +2394,14 @@ class VERMainWindow(QMainWindow):
         )
 
     def keyPressEvent(self, event):
-        """Handle Space bar to toggle Stop/Resume during an active analysis session.
+        """Handle Space bar as a single deterministic state-toggle.
 
-        Space toggles between Stop and Resume only when analysis has already
-        started (i.e. the start button shows "Running..." or "Resume  (Space)").
-        Space is intentionally NOT mapped to the initial Start action.
-        The shortcut is suppressed when focus is in a text-entry or spin-box
-        widget so that normal typing is never interrupted.
+        - Idle (Start): Space triggers Start.
+        - Running: Space triggers Stop.
+        - Paused (Resume): Space triggers Resume.
+
+        Space is suppressed when focus is in a text-entry or spin-box widget
+        so that normal typing is never interrupted.
         """
         if event.key() == Qt.Key.Key_Space:
             focused = QApplication.focusWidget()
@@ -2408,7 +2413,7 @@ class VERMainWindow(QMainWindow):
                 self.stop_acquisition()
                 event.accept()
                 return
-            elif btn_text.startswith("Resume"):
+            elif btn_text.startswith("Resume") or btn_text.startswith("Start"):
                 self.start_acquisition()
                 event.accept()
                 return
