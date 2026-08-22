@@ -828,13 +828,18 @@ class VERMainWindow(QMainWindow):
         self.low_spin = QDoubleSpinBox()
         self.low_spin.setDecimals(1)
         self.low_spin.setSingleStep(0.1)
-        self.low_spin.setRange(0.0, 124.9)
-        self.low_spin.setValue(float(FILTER_CONFIG["lowcut_hz"]))
+        nyquist = float(ACQ_CONFIG["sample_rate"]) / 2.0
+        high_spin_max = max(0.5, nyquist - 0.1)
+        low_spin_max = max(0.0, high_spin_max - 0.1)
+        self.low_spin.setRange(0.0, low_spin_max)
+        self.low_spin.setValue(min(float(FILTER_CONFIG["lowcut_hz"]), low_spin_max))
         self.high_spin = QDoubleSpinBox()
         self.high_spin.setDecimals(1)
         self.high_spin.setSingleStep(0.5)
-        self.high_spin.setRange(0.5, 124.9)
-        self.high_spin.setValue(float(FILTER_CONFIG["highcut_hz"]))
+        self.high_spin.setRange(0.5, high_spin_max)
+        self.high_spin.setValue(min(max(float(FILTER_CONFIG["highcut_hz"]), 0.5), high_spin_max))
+        if self.low_spin.value() >= self.high_spin.value():
+            self.low_spin.setValue(max(0.0, self.high_spin.value() - 0.1))
         
         # Add the Scope Filter Dropdown
         self.scope_filter_combo = QComboBox()
@@ -1572,6 +1577,11 @@ class VERMainWindow(QMainWindow):
         # Run the shared peak-detection/classification pipeline for each filter mode.
         peak_results: dict[str, dict] = {}
         confidence_results: dict[str, dict] = {}
+
+        def _latency_or_none(peak_result: dict, name: str):
+            val = peak_result[name]["latency_ms"]
+            return None if np.isnan(val) else float(val)
+
         for mode in modes:
             if averages[mode].size == 0 or not np.any((time_ms >= 0) & (time_ms <= 200)):
                 peak_results[mode] = None
@@ -1585,17 +1595,13 @@ class VERMainWindow(QMainWindow):
                     peak_scale = float(wavelet_freqs[peak_idx[0]])
                     peak_power = float(wavelet_power[peak_idx])
 
-                    def _lat(name: str):
-                        val = pr[name]["latency_ms"]
-                        return None if np.isnan(val) else float(val)
-
                     p2_snr = float(pr["Peak-2"]["snr"]) if not np.isnan(pr["Peak-2"]["snr"]) else 0.0
                     is_ver, failure_details = ver_classifier.evaluate_ver_peak(
                         peak_scale,
                         peak_power,
-                        _lat("Peak-1"),
-                        _lat("Peak-2"),
-                        _lat("Peak-3"),
+                        _latency_or_none(pr, "Peak-1"),
+                        _latency_or_none(pr, "Peak-2"),
+                        _latency_or_none(pr, "Peak-3"),
                         p2_snr,
                         classifier_cfg=classifier_cfg,
                     )
