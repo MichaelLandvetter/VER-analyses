@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import csv
+import hashlib
 import shutil
 import sys
 import time
@@ -54,7 +55,17 @@ from PyQt6.QtWidgets import (
 )
 
 from ver_acquisition import FileAcquisitionSimulator, SerialAcquisitionSource
-from ver_config import ACQ_CONFIG, EPOCH_CONFIG, FILE_CONFIG, FILE_FORMATS, FILTER_CONFIG, SERIAL_CONFIG, SPECIES
+from ver_config import (
+    ACQ_CONFIG,
+    BASELINE_END_MS,
+    BASELINE_START_MS,
+    EPOCH_CONFIG,
+    FILE_CONFIG,
+    FILE_FORMATS,
+    FILTER_CONFIG,
+    SERIAL_CONFIG,
+    SPECIES,
+)
 from ver_constants import (
     DEFAULT_SCOPE_FILTER_MODE,
     SCOPE_FILTER_BUTTERWORTH,
@@ -1484,38 +1495,108 @@ class VERMainWindow(QMainWindow):
         VER classification/report so results are directly comparable to those outputs.
         The exported CSV includes per-peak SNR and constraint-pass flags.
         """
-        # Collect raw (unfiltered) waveform source using the report/session averaging basis.
-        source_waveforms: list[np.ndarray] = []
+        time_ms = self.scope.epoch_time_ms
+        if time_ms is None or len(time_ms) == 0:
+            QMessageBox.information(self, "Filter Compare", "Time axis is empty; run an analysis first.")
+            return
+
+        epoch_len = len(time_ms)
+
+        def _sha(text: str) -> str:
+            return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+        def _waveform_checksum(arr: np.ndarray) -> str:
+            data = np.asarray(arr, dtype=np.float64)
+            if data.size == 0:
+                return ""
+            return hashlib.sha256(np.ascontiguousarray(data).tobytes()).hexdigest()[:16]
+
+        def _mean_waveform(waveforms: list[np.ndarray]) -> np.ndarray:
+            return np.mean(np.vstack(waveforms), axis=0)
+
+        def _normalize_waveforms(values: list[np.ndarray], label: str) -> tuple[list[np.ndarray], list[str]]:
+            ok_waveforms: list[np.ndarray] = []
+            issues: list[str] = []
+            for idx, wave in enumerate(values, start=1):
+                arr = np.asarray(wave, dtype=float).reshape(-1)
+                if arr.size != epoch_len:
+                    issues.append(
+                        f"{label} #{idx} has {arr.size} samples; expected {epoch_len} "
+                        f"(time axis {float(time_ms[0]):.1f}..{float(time_ms[-1]):.1f} ms)."
+                    )
+                    continue
+                ok_waveforms.append(arr)
+            return ok_waveforms, issues
+
+        # Build compare basis from the same aggregation basis used by report/VER Evolution:
+        # all completed session waveforms when available, otherwise active accepted epochs.
+        raw_basis_waveforms: list[np.ndarray] = []
+        report_basis_waveforms: list[np.ndarray] = []
         source_basis = ""
         source_label = ""
+        accepted_index_repr = ""
+        accepted_index_hash = ""
         n_waveforms_used = 0
 
-        # Preferred source: latest completed session mean used by report-waveform export basis.
-        if hasattr(self.scope, "raw_session_averages") and self.scope.raw_session_averages:
-            raw_avg = np.asarray(self.scope.raw_session_averages[-1], dtype=float)
-            if raw_avg.size > 0:
-                source_waveforms = [raw_avg]
-                source_basis = "report_waveforms_mean"
-                session_num = len(self.scope.raw_session_averages)
-                accepted_counts = getattr(self, "session_flash_counts_accepted", [])
-                if accepted_counts and len(accepted_counts) >= session_num and accepted_counts[session_num - 1] is not None:
-                    n_waveforms_used = int(accepted_counts[session_num - 1])
-                source_label = f"completed session {session_num} mean"
+        completed_raw = list(getattr(self.scope, "raw_session_averages", []) or [])
+        completed_filtered = list(getattr(self.scope, "session_averages", []) or [])
+        active_raw = list(getattr(self.scope, "raw_session_epochs", []) or [])
+        active_filtered = list(getattr(self.scope, "session_epochs", []) or [])
 
-        # Fallback source: in-memory accepted raw epochs from the active (not yet finalized) session.
-        if not source_waveforms and hasattr(self.scope, "raw_session_epochs") and self.scope.raw_session_epochs:
-            source_waveforms = [np.asarray(ep, dtype=float) for ep in self.scope.raw_session_epochs]
+        if completed_raw and completed_filtered:
+            raw_basis_waveforms = completed_raw
+            report_basis_waveforms = completed_filtered
+            source_basis = "report_waveforms_mean"
+            source_label = f"mean of {len(completed_filtered)} completed sessions"
+            accepted_counts = [
+                int(c) for c in (getattr(self, "session_flash_counts_accepted", []) or []) if c is not None
+            ]
+            accepted_index_repr = ",".join(str(i) for i in range(1, len(completed_filtered) + 1))
+            accepted_index_hash = _sha(accepted_index_repr)
+            n_waveforms_used = len(completed_filtered)
+            accepted_count_total = int(sum(accepted_counts)) if accepted_counts else n_waveforms_used
+        elif active_raw and active_filtered:
+            raw_basis_waveforms = active_raw
+            report_basis_waveforms = active_filtered
             source_basis = "in_memory_equivalent"
-            n_waveforms_used = len(source_waveforms)
-            source_label = f"active session ({n_waveforms_used} accepted epochs)"
-
-        if not source_waveforms:
+            source_label = f"active session ({len(active_filtered)} accepted epochs)"
+            accepted_index_repr = ",".join(str(i) for i in range(1, len(active_filtered) + 1))
+            accepted_index_hash = _sha(accepted_index_repr)
+            n_waveforms_used = len(active_filtered)
+            accepted_count_total = n_waveforms_used
+        else:
             QMessageBox.information(
                 self,
                 "Filter Compare",
                 "No epoch data available yet.\nRun an analysis first, then click Filter Compare.",
             )
             return
+
+        raw_basis_waveforms, raw_issues = _normalize_waveforms(raw_basis_waveforms, "Raw basis waveform")
+        report_basis_waveforms, report_issues = _normalize_waveforms(report_basis_waveforms, "Report basis waveform")
+        if raw_issues or report_issues:
+            issue_lines = "\n".join(raw_issues + report_issues)
+            QMessageBox.warning(
+                self,
+                "Filter Compare",
+                "Waveform alignment mismatch detected.\n"
+                "All source waveforms must have the same sample length and time axis.\n\n"
+                f"{issue_lines}\n\n"
+                "Metrics export was skipped.",
+            )
+            return
+        if len(raw_basis_waveforms) != len(report_basis_waveforms):
+            QMessageBox.warning(
+                self,
+                "Filter Compare",
+                "Waveform alignment mismatch detected.\n"
+                "Raw and report basis waveform counts differ.\n"
+                "Metrics export was skipped.",
+            )
+            return
+
+        report_basis_mean = _mean_waveform(report_basis_waveforms)
+        report_basis_checksum = _waveform_checksum(report_basis_mean)
 
         low = float(self.low_spin.value())
         high = float(self.high_spin.value())
@@ -1532,13 +1613,18 @@ class VERMainWindow(QMainWindow):
             "sample_rate": _ACQ["sample_rate"],
         }
 
-        time_ms = self.scope.epoch_time_ms
-        if time_ms is None or len(time_ms) == 0:
-            QMessageBox.information(self, "Filter Compare", "Time axis is empty; run an analysis first.")
-            return
         time_axis_start_ms = float(time_ms[0])
         time_axis_end_ms = float(time_ms[-1])
-        time_axis_step_ms = float(np.median(np.diff(time_ms))) if len(time_ms) > 1 else float("nan")
+        dt_ms = float(np.median(np.diff(time_ms))) if len(time_ms) > 1 else float("nan")
+        if len(time_ms) > 2 and not np.allclose(np.diff(time_ms), dt_ms, atol=1e-9):
+            QMessageBox.warning(
+                self,
+                "Filter Compare",
+                "Waveform alignment mismatch detected.\n"
+                "Time vector spacing is not uniform.\n"
+                "Metrics export was skipped.",
+            )
+            return
 
         modes = [SCOPE_FILTER_BUTTERWORTH, SCOPE_FILTER_FIR, SCOPE_FILTER_SAVGOL]
         colors = ["#1f77b4", "#ff7f0e", "#2ca02c"]
@@ -1549,7 +1635,7 @@ class VERMainWindow(QMainWindow):
                 f = BandpassFilter(filter_cfg)
                 f.set_scope_mode(mode)
                 filtered = []
-                for ep in source_waveforms:
+                for ep in raw_basis_waveforms:
                     ep_arr = np.asarray(ep, dtype=float)
                     if ep_arr.size != len(time_ms):
                         continue
@@ -1558,7 +1644,7 @@ class VERMainWindow(QMainWindow):
                     filtered.append(f.apply_zero_phase(ep_arr, baseline_mean=baseline))
                 if not filtered:
                     raise ValueError("No usable waveform samples matched the current epoch time axis.")
-                averages[mode] = np.mean(np.vstack(filtered), axis=0)
+                averages[mode] = _mean_waveform(filtered)
         except Exception as exc:
             QMessageBox.critical(self, "Filter Compare Error", f"Failed to apply filters:\n{exc}")
             return
@@ -1577,19 +1663,48 @@ class VERMainWindow(QMainWindow):
         # Run the shared peak-detection/classification pipeline for each filter mode.
         peak_results: dict[str, dict] = {}
         confidence_results: dict[str, dict] = {}
+        waveform_checksums: dict[str, str] = {}
+        p1_indices: dict[str, int | None] = {}
+        p2_indices: dict[str, int | None] = {}
+        p3_indices: dict[str, int | None] = {}
+        report_basis_match_warnings: dict[str, str] = {}
+        baseline_window_ms = f"{float(BASELINE_START_MS):.1f}..{float(BASELINE_END_MS):.1f}"
+        p2_window_ms = (
+            f"{float(classifier_cfg.get('p2_min_latency', 40.0)):.1f}.."
+            f"{float(classifier_cfg.get('p2_max_latency', 120.0)):.1f}"
+        )
+        p1_window_ms = (
+            f"P2-{float(classifier_cfg.get('ipi_max', 85.0)):.1f}.."
+            f"P2-{float(classifier_cfg.get('ipi_min', 20.0)):.1f}"
+        )
+        p3_window_ms = f"P2..P2+{float(classifier_cfg.get('p3_p2_max', 120.0)):.1f}"
 
         def _latency_or_none(peak_result: dict, name: str):
             val = peak_result[name]["latency_ms"]
             return None if np.isnan(val) else float(val)
 
+        def _latency_to_index(latency_ms: float) -> int | None:
+            if np.isnan(latency_ms):
+                return None
+            matches = np.where(np.isclose(time_ms, latency_ms, atol=max(abs(dt_ms) / 2.0, 1e-9)))[0]
+            return int(matches[0]) if matches.size else int(np.argmin(np.abs(time_ms - latency_ms)))
+
         for mode in modes:
             if averages[mode].size == 0 or not np.any((time_ms >= 0) & (time_ms <= 200)):
                 peak_results[mode] = None
                 confidence_results[mode] = None
+                waveform_checksums[mode] = ""
+                p1_indices[mode] = None
+                p2_indices[mode] = None
+                p3_indices[mode] = None
             else:
                 try:
                     pr = detect_ver_peaks(averages[mode], time_ms, classifier_cfg=classifier_cfg)
                     peak_results[mode] = pr
+                    waveform_checksums[mode] = _waveform_checksum(averages[mode])
+                    p1_indices[mode] = _latency_to_index(pr["Peak-1"]["latency_ms"])
+                    p2_indices[mode] = _latency_to_index(pr["Peak-2"]["latency_ms"])
+                    p3_indices[mode] = _latency_to_index(pr["Peak-3"]["latency_ms"])
                     wavelet_power, wavelet_freqs = compute_wavelet_scalogram(averages[mode])
                     peak_idx = np.unravel_index(np.argmax(wavelet_power), wavelet_power.shape)
                     peak_scale = float(wavelet_freqs[peak_idx[0]])
@@ -1616,6 +1731,23 @@ class VERMainWindow(QMainWindow):
                 except Exception:
                     peak_results[mode] = None
                     confidence_results[mode] = None
+                    waveform_checksums[mode] = ""
+                    p1_indices[mode] = None
+                    p2_indices[mode] = None
+                    p3_indices[mode] = None
+
+        # Internal consistency hook: when compare basis equals report basis,
+        # the same filter basis should reproduce the report waveform checksum.
+        report_mode = getattr(self.bandpass, "scope_mode", None)
+        if source_basis == "report_waveforms_mean" and report_mode in averages:
+            compare_checksum = waveform_checksums.get(report_mode, "")
+            if compare_checksum and report_basis_checksum and compare_checksum != report_basis_checksum:
+                msg = (
+                    "Filter Compare checksum mismatch against report basis "
+                    f"(mode={report_mode}, compare={compare_checksum}, report={report_basis_checksum})."
+                )
+                report_basis_match_warnings[report_mode] = msg
+                log.warning(msg)
 
         # --- Build figure ---
         fig, ax = plt.subplots(figsize=(10, 5), facecolor="white")
@@ -1669,8 +1801,8 @@ class VERMainWindow(QMainWindow):
         table_data = []
         metrics: list[dict] = []
         for mode in modes:
-            pr = peak_results.get(mode)
-            if pr is None:
+            pr_for_mode = peak_results.get(mode)
+            if pr_for_mode is None:
                 row = [mode] + ["—"] * (len(col_labels) - 1)
                 table_data.append(row)
                 metrics.append({
@@ -1687,9 +1819,23 @@ class VERMainWindow(QMainWindow):
                     "snr_pass": "",
                     "source_basis": source_basis,
                     "n_waveforms_used": n_waveforms_used,
-                    "time_axis_start_ms": time_axis_start_ms,
-                    "time_axis_end_ms": time_axis_end_ms,
-                    "time_axis_step_ms": time_axis_step_ms,
+                    "time_start_ms": time_axis_start_ms,
+                    "time_end_ms": time_axis_end_ms,
+                    "dt_ms": dt_ms,
+                    "baseline_window_ms": baseline_window_ms,
+                    "accepted_indices": accepted_index_repr,
+                    "accepted_index_count": accepted_count_total,
+                    "accepted_index_hash": accepted_index_hash,
+                    "p1_index": "",
+                    "p2_index": "",
+                    "p3_index": "",
+                    "p1_window_ms": p1_window_ms,
+                    "p2_window_ms": p2_window_ms,
+                    "p3_window_ms": p3_window_ms,
+                    "waveform_checksum": waveform_checksums.get(mode, ""),
+                    "report_basis_checksum": report_basis_checksum,
+                    "low_confidence": True,
+                    "low_confidence_reason": "peak_detection_failed",
                     "peak_detection_mode": peak_detection_mode,
                     "lowcut_hz": low,
                     "highcut_hz": high,
@@ -1697,33 +1843,40 @@ class VERMainWindow(QMainWindow):
                 continue
             conf = confidence_results.get(mode) or {}
             classification_cell = _bool(conf["classification_pass"]) if "classification_pass" in conf else "—"
+            low_confidence_reasons: list[str] = []
+            if not conf.get("classification_pass", False):
+                low_confidence_reasons.append("classification_constraints_failed")
+            if not pr_for_mode["Peak-1"]["found"] or not pr_for_mode["Peak-2"]["found"] or not pr_for_mode["Peak-3"]["found"]:
+                low_confidence_reasons.append("missing_required_peak")
+            if mode in report_basis_match_warnings:
+                low_confidence_reasons.append("report_checksum_mismatch")
             row = [
                 mode,
-                _fmt(pr["Peak-1"]["latency_ms"]),
-                _fmt(pr["Peak-1"]["snr"]),
-                _bool(pr["Peak-1"]["above_threshold"]),
-                _fmt(pr["Peak-2"]["latency_ms"]),
-                _fmt(pr["Peak-2"]["snr"]),
-                _bool(pr["Peak-2"]["above_threshold"]),
-                _fmt(pr["Peak-3"]["latency_ms"]),
-                _fmt(pr["Peak-3"]["snr"]),
-                _bool(pr["Peak-3"]["above_threshold"]),
+                _fmt(pr_for_mode["Peak-1"]["latency_ms"]),
+                _fmt(pr_for_mode["Peak-1"]["snr"]),
+                _bool(pr_for_mode["Peak-1"]["above_threshold"]),
+                _fmt(pr_for_mode["Peak-2"]["latency_ms"]),
+                _fmt(pr_for_mode["Peak-2"]["snr"]),
+                _bool(pr_for_mode["Peak-2"]["above_threshold"]),
+                _fmt(pr_for_mode["Peak-3"]["latency_ms"]),
+                _fmt(pr_for_mode["Peak-3"]["snr"]),
+                _bool(pr_for_mode["Peak-3"]["above_threshold"]),
                 classification_cell,
             ]
             table_data.append(row)
             metrics.append({
                 "mode": mode,
-                "p1_latency_ms": pr["Peak-1"]["latency_ms"],
-                "p1_snr": pr["Peak-1"]["snr"],
-                "p1_above_threshold": pr["Peak-1"]["above_threshold"],
-                "p2_latency_ms": pr["Peak-2"]["latency_ms"],
-                "p2_snr": pr["Peak-2"]["snr"],
-                "p2_above_threshold": pr["Peak-2"]["above_threshold"],
-                "p3_latency_ms": pr["Peak-3"]["latency_ms"],
-                "p3_snr": pr["Peak-3"]["snr"],
-                "p3_above_threshold": pr["Peak-3"]["above_threshold"],
-                "VER_detected": pr["VER_detected"],
-                "noise_rms": pr["noise_rms"],
+                "p1_latency_ms": pr_for_mode["Peak-1"]["latency_ms"],
+                "p1_snr": pr_for_mode["Peak-1"]["snr"],
+                "p1_above_threshold": pr_for_mode["Peak-1"]["above_threshold"],
+                "p2_latency_ms": pr_for_mode["Peak-2"]["latency_ms"],
+                "p2_snr": pr_for_mode["Peak-2"]["snr"],
+                "p2_above_threshold": pr_for_mode["Peak-2"]["above_threshold"],
+                "p3_latency_ms": pr_for_mode["Peak-3"]["latency_ms"],
+                "p3_snr": pr_for_mode["Peak-3"]["snr"],
+                "p3_above_threshold": pr_for_mode["Peak-3"]["above_threshold"],
+                "VER_detected": pr_for_mode["VER_detected"],
+                "noise_rms": pr_for_mode["noise_rms"],
                 "classification_pass": conf.get("classification_pass"),
                 "scale_range_pass": conf.get("Scale Range"),
                 "minimum_power_pass": conf.get("Minimum Power"),
@@ -1732,9 +1885,23 @@ class VERMainWindow(QMainWindow):
                 "snr_pass": conf.get("SNR"),
                 "source_basis": source_basis,
                 "n_waveforms_used": n_waveforms_used,
-                "time_axis_start_ms": time_axis_start_ms,
-                "time_axis_end_ms": time_axis_end_ms,
-                "time_axis_step_ms": time_axis_step_ms,
+                "time_start_ms": time_axis_start_ms,
+                "time_end_ms": time_axis_end_ms,
+                "dt_ms": dt_ms,
+                "baseline_window_ms": baseline_window_ms,
+                "accepted_indices": accepted_index_repr,
+                "accepted_index_count": accepted_count_total,
+                "accepted_index_hash": accepted_index_hash,
+                "p1_index": p1_indices.get(mode),
+                "p2_index": p2_indices.get(mode),
+                "p3_index": p3_indices.get(mode),
+                "p1_window_ms": p1_window_ms,
+                "p2_window_ms": p2_window_ms,
+                "p3_window_ms": p3_window_ms,
+                "waveform_checksum": waveform_checksums.get(mode, ""),
+                "report_basis_checksum": report_basis_checksum,
+                "low_confidence": bool(low_confidence_reasons),
+                "low_confidence_reason": ";".join(low_confidence_reasons),
                 "peak_detection_mode": peak_detection_mode,
                 "lowcut_hz": low,
                 "highcut_hz": high,
@@ -1783,9 +1950,23 @@ class VERMainWindow(QMainWindow):
                 "snr_pass",
                 "source_basis",
                 "n_waveforms_used",
-                "time_axis_start_ms",
-                "time_axis_end_ms",
-                "time_axis_step_ms",
+                "time_start_ms",
+                "time_end_ms",
+                "dt_ms",
+                "baseline_window_ms",
+                "accepted_indices",
+                "accepted_index_count",
+                "accepted_index_hash",
+                "p1_index",
+                "p2_index",
+                "p3_index",
+                "p1_window_ms",
+                "p2_window_ms",
+                "p3_window_ms",
+                "waveform_checksum",
+                "report_basis_checksum",
+                "low_confidence",
+                "low_confidence_reason",
                 "peak_detection_mode",
                 "lowcut_hz",
                 "highcut_hz",
