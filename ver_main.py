@@ -745,6 +745,16 @@ class VERMainWindow(QMainWindow):
         species_value = self.file_species_combo.currentText().strip()
         return "" if species_value == "(not set)" else species_value
 
+    def _on_species_changed(self, _value: str) -> None:
+        """Persist species selection immediately when changed in Box 2."""
+
+        try:
+            metadata = self.settings_manager.settings.setdefault("METADATA_CONFIG", {})
+            metadata["species"] = self._selected_species_value()
+            self.settings_manager.save_settings()
+        except Exception as exc:
+            log.warning("Could not persist species selection: %s", exc)
+
     def _launch_usb_test(self):
         """Launches the dedicated USB test program directly within the application."""
         # Import the GUI class from your USB test file
@@ -812,14 +822,24 @@ class VERMainWindow(QMainWindow):
         self.file_species_combo.addItems(self._species_options())
         saved_species = self.settings_manager.settings.get("METADATA_CONFIG", {}).get("species", "").strip()
         self._set_species_selection(saved_species)
+        self.file_species_combo.currentTextChanged.connect(self._on_species_changed)
 
         # --- Filter Widgets ---
-        self.low_spin = QSpinBox()
-        self.low_spin.setRange(0, 120)
-        self.low_spin.setValue(int(FILTER_CONFIG["lowcut_hz"]))
-        self.high_spin = QSpinBox()
-        self.high_spin.setRange(2, 124)
-        self.high_spin.setValue(int(FILTER_CONFIG["highcut_hz"]))
+        self.low_spin = QDoubleSpinBox()
+        self.low_spin.setDecimals(1)
+        self.low_spin.setSingleStep(0.1)
+        nyquist = float(ACQ_CONFIG["sample_rate"]) / 2.0
+        high_spin_max = max(0.5, nyquist - 0.1)
+        low_spin_max = max(0.0, high_spin_max - 0.1)
+        self.low_spin.setRange(0.0, low_spin_max)
+        self.low_spin.setValue(min(float(FILTER_CONFIG["lowcut_hz"]), low_spin_max))
+        self.high_spin = QDoubleSpinBox()
+        self.high_spin.setDecimals(1)
+        self.high_spin.setSingleStep(0.5)
+        self.high_spin.setRange(0.5, high_spin_max)
+        self.high_spin.setValue(min(max(float(FILTER_CONFIG["highcut_hz"]), 0.5), high_spin_max))
+        if self.low_spin.value() >= self.high_spin.value():
+            self.low_spin.setValue(max(0.0, self.high_spin.value() - 0.1))
         
         # Add the Scope Filter Dropdown
         self.scope_filter_combo = QComboBox()
@@ -914,13 +934,6 @@ class VERMainWindow(QMainWindow):
         layout3.addRow("High cut (Hz):", self.high_spin)
         layout3.addRow("Scope Filter:", self.scope_filter_combo) 
         layout3.addRow(apply_filter_btn)
-        filter_compare_btn = QPushButton("Filter Compare")
-        filter_compare_btn.setToolTip(
-            "Overlay Butterworth / FIR / Savitzky-Golay averages for the current dataset\n"
-            "and save a diagnostic figure + metrics CSV to the report folder."
-        )
-        filter_compare_btn.clicked.connect(self._run_filter_compare)
-        layout3.addRow(filter_compare_btn)
         group3.setLayout(layout3)
         top_bar.addWidget(group3)
         
@@ -1078,6 +1091,13 @@ class VERMainWindow(QMainWindow):
         
         downsample_action = QAction("Downsample LabChart file (1000 Hz → 250 Hz)...", self)
         downsample_action.triggered.connect(self._on_downsample)
+
+        filter_compare_action = QAction("Filter Compare", self)
+        filter_compare_action.setToolTip(
+            "Overlay Butterworth / FIR / Savitzky-Golay averages for the current dataset\n"
+            "and save a diagnostic figure + metrics CSV to the report folder."
+        )
+        filter_compare_action.triggered.connect(self._run_filter_compare)
         
         usb_test_action = QAction("USB Test", self)
         usb_test_action.setToolTip("Open the dedicated USB Serial Port testing tool")
@@ -1090,6 +1110,7 @@ class VERMainWindow(QMainWindow):
         # 2. Add them to the menu in the exact order you want them to appear!
         file_menu.addAction(open_action)
         file_menu.addAction(save_action)
+        file_menu.addAction(filter_compare_action)
         file_menu.addAction(downsample_action)
         file_menu.addAction(usb_test_action)    
         file_menu.addSeparator()
@@ -1433,11 +1454,28 @@ class VERMainWindow(QMainWindow):
     def _apply_filter_settings(self):
         low = float(self.low_spin.value())
         high = float(self.high_spin.value())
-        if low >= high:
-            QMessageBox.warning(self, "Invalid filter", "Low cut must be less than high cut.")
+        is_valid, error_msg = self._validate_filter_bounds(low, high)
+        if not is_valid:
+            QMessageBox.warning(self, "Invalid filter", error_msg)
             return
-        self.bandpass.redesign(low, high)
+        try:
+            self.bandpass.redesign(low, high)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Invalid filter", str(exc))
+            return
         self.display.set_status(f"Filter updated: {low:.1f}-{high:.1f} Hz")
+
+    def _validate_filter_bounds(self, low: float, high: float) -> tuple[bool, str]:
+        nyquist = float(ACQ_CONFIG["sample_rate"]) / 2.0
+        if low < 0:
+            return False, "Low cut must be 0 Hz or higher."
+        if high <= 0:
+            return False, "High cut must be above 0 Hz."
+        if low >= high:
+            return False, "Low cut must be less than high cut."
+        if high >= nyquist:
+            return False, f"High cut must be below Nyquist ({nyquist:.1f} Hz)."
+        return True, ""
 
     def _run_filter_compare(self):
         """Compute scope-averages for all three filter modes and show an overlay diagnostic.
@@ -1446,21 +1484,32 @@ class VERMainWindow(QMainWindow):
         VER classification/report so results are directly comparable to those outputs.
         The exported CSV includes per-peak SNR and constraint-pass flags.
         """
-        # Collect raw (unfiltered) epochs to compare filters on identical data.
-        raw_epochs: list | None = None
+        # Collect raw (unfiltered) waveform source using the report/session averaging basis.
+        source_waveforms: list[np.ndarray] = []
+        source_basis = ""
         source_label = ""
+        n_waveforms_used = 0
 
-        # Prefer current session's individual raw epochs; fall back to stored raw average.
-        if hasattr(self.scope, "raw_session_epochs") and self.scope.raw_session_epochs:
-            raw_epochs = list(self.scope.raw_session_epochs)
-            source_label = f"current session ({len(raw_epochs)} epochs)"
-        elif hasattr(self.scope, "raw_session_averages") and self.scope.raw_session_averages:
-            raw_avg = self.scope.raw_session_averages[-1]
-            raw_epochs = [raw_avg]
-            session_num = len(self.scope.raw_session_averages)
-            source_label = f"session {session_num} average"
+        # Preferred source: latest completed session mean used by report-waveform export basis.
+        if hasattr(self.scope, "raw_session_averages") and self.scope.raw_session_averages:
+            raw_avg = np.asarray(self.scope.raw_session_averages[-1], dtype=float)
+            if raw_avg.size > 0:
+                source_waveforms = [raw_avg]
+                source_basis = "report_waveforms_mean"
+                session_num = len(self.scope.raw_session_averages)
+                accepted_counts = getattr(self, "session_flash_counts_accepted", [])
+                if accepted_counts and len(accepted_counts) >= session_num and accepted_counts[session_num - 1] is not None:
+                    n_waveforms_used = int(accepted_counts[session_num - 1])
+                source_label = f"completed session {session_num} mean"
 
-        if not raw_epochs:
+        # Fallback source: in-memory accepted raw epochs from the active (not yet finalized) session.
+        if not source_waveforms and hasattr(self.scope, "raw_session_epochs") and self.scope.raw_session_epochs:
+            source_waveforms = [np.asarray(ep, dtype=float) for ep in self.scope.raw_session_epochs]
+            source_basis = "in_memory_equivalent"
+            n_waveforms_used = len(source_waveforms)
+            source_label = f"active session ({n_waveforms_used} accepted epochs)"
+
+        if not source_waveforms:
             QMessageBox.information(
                 self,
                 "Filter Compare",
@@ -1470,8 +1519,9 @@ class VERMainWindow(QMainWindow):
 
         low = float(self.low_spin.value())
         high = float(self.high_spin.value())
-        if low > high or high <= 0:
-            QMessageBox.warning(self, "Invalid filter", "Low cut must be less than high cut.")
+        is_valid, error_msg = self._validate_filter_bounds(low, high)
+        if not is_valid:
+            QMessageBox.warning(self, "Invalid filter", error_msg)
             return
 
         from ver_config import ACQ_CONFIG as _ACQ, FILTER_CONFIG as _FC
@@ -1483,6 +1533,13 @@ class VERMainWindow(QMainWindow):
         }
 
         time_ms = self.scope.epoch_time_ms
+        if time_ms is None or len(time_ms) == 0:
+            QMessageBox.information(self, "Filter Compare", "Time axis is empty; run an analysis first.")
+            return
+        time_axis_start_ms = float(time_ms[0])
+        time_axis_end_ms = float(time_ms[-1])
+        time_axis_step_ms = float(np.median(np.diff(time_ms))) if len(time_ms) > 1 else float("nan")
+
         modes = [SCOPE_FILTER_BUTTERWORTH, SCOPE_FILTER_FIR, SCOPE_FILTER_SAVGOL]
         colors = ["#1f77b4", "#ff7f0e", "#2ca02c"]
         averages: dict[str, np.ndarray] = {}
@@ -1492,11 +1549,15 @@ class VERMainWindow(QMainWindow):
                 f = BandpassFilter(filter_cfg)
                 f.set_scope_mode(mode)
                 filtered = []
-                for ep in raw_epochs:
+                for ep in source_waveforms:
                     ep_arr = np.asarray(ep, dtype=float)
+                    if ep_arr.size != len(time_ms):
+                        continue
                     pre_samples = self.scope.pre_samples
                     baseline = float(np.mean(ep_arr[:pre_samples])) if pre_samples > 0 else float(np.mean(ep_arr))
                     filtered.append(f.apply_zero_phase(ep_arr, baseline_mean=baseline))
+                if not filtered:
+                    raise ValueError("No usable waveform samples matched the current epoch time axis.")
                 averages[mode] = np.mean(np.vstack(filtered), axis=0)
         except Exception as exc:
             QMessageBox.critical(self, "Filter Compare Error", f"Failed to apply filters:\n{exc}")
@@ -1504,19 +1565,57 @@ class VERMainWindow(QMainWindow):
 
         # Use the same classifier config active for classification/report.
         classifier_cfg = self.settings_manager.settings.get("CLASSIFIER_CONFIG", {})
+        peak_detection_mode = str(
+            classifier_cfg.get("peak_detection_mode", ver_peaks.DEFAULT_PEAK_DETECTION_MODE)
+        )
+        if peak_detection_mode not in (
+            ver_peaks.DOMINANT_OPPOSITE_NEIGHBORS_MODE,
+            ver_peaks.LEGACY_PEAK_DETECTION_MODE,
+        ):
+            peak_detection_mode = ver_peaks.DEFAULT_PEAK_DETECTION_MODE
 
-        # Run the shared peak-detection pipeline for each filter mode.
+        # Run the shared peak-detection/classification pipeline for each filter mode.
         peak_results: dict[str, dict] = {}
+        confidence_results: dict[str, dict] = {}
+
+        def _latency_or_none(peak_result: dict, name: str):
+            val = peak_result[name]["latency_ms"]
+            return None if np.isnan(val) else float(val)
+
         for mode in modes:
             if averages[mode].size == 0 or not np.any((time_ms >= 0) & (time_ms <= 200)):
                 peak_results[mode] = None
+                confidence_results[mode] = None
             else:
                 try:
-                    peak_results[mode] = detect_ver_peaks(
-                        averages[mode], time_ms, classifier_cfg=classifier_cfg
+                    pr = detect_ver_peaks(averages[mode], time_ms, classifier_cfg=classifier_cfg)
+                    peak_results[mode] = pr
+                    wavelet_power, wavelet_freqs = compute_wavelet_scalogram(averages[mode])
+                    peak_idx = np.unravel_index(np.argmax(wavelet_power), wavelet_power.shape)
+                    peak_scale = float(wavelet_freqs[peak_idx[0]])
+                    peak_power = float(wavelet_power[peak_idx])
+
+                    p2_snr = float(pr["Peak-2"]["snr"]) if not np.isnan(pr["Peak-2"]["snr"]) else 0.0
+                    is_ver, failure_details = ver_classifier.evaluate_ver_peak(
+                        peak_scale,
+                        peak_power,
+                        _latency_or_none(pr, "Peak-1"),
+                        _latency_or_none(pr, "Peak-2"),
+                        _latency_or_none(pr, "Peak-3"),
+                        p2_snr,
+                        classifier_cfg=classifier_cfg,
                     )
+                    confidence_results[mode] = {
+                        "classification_pass": bool(is_ver),
+                        "Scale Range": bool(failure_details.get("Scale Range", False)),
+                        "Minimum Power": bool(failure_details.get("Minimum Power", False)),
+                        "P2 Latency": bool(failure_details.get("P2 Latency", False)),
+                        "Peak Structure": bool(failure_details.get("Peak Structure", False)),
+                        "SNR": bool(failure_details.get("SNR", False)),
+                    }
                 except Exception:
                     peak_results[mode] = None
+                    confidence_results[mode] = None
 
         # --- Build figure ---
         fig, ax = plt.subplots(figsize=(10, 5), facecolor="white")
@@ -1547,7 +1646,7 @@ class VERMainWindow(QMainWindow):
         ax.set_xlabel("Time (ms)")
         ax.set_ylabel("Amplitude (µV)")
         ax.set_title(
-            f"Filter Compare  —  {low:.0f}–{high:.0f} Hz  |  {source_label}\n"
+            f"Filter Compare  —  {low:.1f}–{high:.1f} Hz  |  {source_label}\n"
             "◆ P2 (dominant)   ● P1   ■ P3   ✓ = SNR above threshold"
         )
         ax.legend(loc="upper right", fontsize=9)
@@ -1580,8 +1679,24 @@ class VERMainWindow(QMainWindow):
                     "p2_latency_ms": "", "p2_snr": "", "p2_above_threshold": "",
                     "p3_latency_ms": "", "p3_snr": "", "p3_above_threshold": "",
                     "VER_detected": "", "noise_rms": "",
+                    "classification_pass": "",
+                    "scale_range_pass": "",
+                    "minimum_power_pass": "",
+                    "p2_latency_pass": "",
+                    "peak_structure_pass": "",
+                    "snr_pass": "",
+                    "source_basis": source_basis,
+                    "n_waveforms_used": n_waveforms_used,
+                    "time_axis_start_ms": time_axis_start_ms,
+                    "time_axis_end_ms": time_axis_end_ms,
+                    "time_axis_step_ms": time_axis_step_ms,
+                    "peak_detection_mode": peak_detection_mode,
+                    "lowcut_hz": low,
+                    "highcut_hz": high,
                 })
                 continue
+            conf = confidence_results.get(mode) or {}
+            classification_cell = _bool(conf["classification_pass"]) if "classification_pass" in conf else "—"
             row = [
                 mode,
                 _fmt(pr["Peak-1"]["latency_ms"]),
@@ -1593,7 +1708,7 @@ class VERMainWindow(QMainWindow):
                 _fmt(pr["Peak-3"]["latency_ms"]),
                 _fmt(pr["Peak-3"]["snr"]),
                 _bool(pr["Peak-3"]["above_threshold"]),
-                _bool(pr["VER_detected"]),
+                classification_cell,
             ]
             table_data.append(row)
             metrics.append({
@@ -1609,6 +1724,20 @@ class VERMainWindow(QMainWindow):
                 "p3_above_threshold": pr["Peak-3"]["above_threshold"],
                 "VER_detected": pr["VER_detected"],
                 "noise_rms": pr["noise_rms"],
+                "classification_pass": conf.get("classification_pass"),
+                "scale_range_pass": conf.get("Scale Range"),
+                "minimum_power_pass": conf.get("Minimum Power"),
+                "p2_latency_pass": conf.get("P2 Latency"),
+                "peak_structure_pass": conf.get("Peak Structure"),
+                "snr_pass": conf.get("SNR"),
+                "source_basis": source_basis,
+                "n_waveforms_used": n_waveforms_used,
+                "time_axis_start_ms": time_axis_start_ms,
+                "time_axis_end_ms": time_axis_end_ms,
+                "time_axis_step_ms": time_axis_step_ms,
+                "peak_detection_mode": peak_detection_mode,
+                "lowcut_hz": low,
+                "highcut_hz": high,
             })
 
         table = ax.table(
@@ -1646,6 +1775,20 @@ class VERMainWindow(QMainWindow):
                 "p2_latency_ms", "p2_snr", "p2_above_threshold",
                 "p3_latency_ms", "p3_snr", "p3_above_threshold",
                 "VER_detected", "noise_rms",
+                "classification_pass",
+                "scale_range_pass",
+                "minimum_power_pass",
+                "p2_latency_pass",
+                "peak_structure_pass",
+                "snr_pass",
+                "source_basis",
+                "n_waveforms_used",
+                "time_axis_start_ms",
+                "time_axis_end_ms",
+                "time_axis_step_ms",
+                "peak_detection_mode",
+                "lowcut_hz",
+                "highcut_hz",
             ]
             with open(csv_path, "w", newline="") as fh:
                 writer = csv.DictWriter(fh, fieldnames=csv_fields, extrasaction="ignore")
