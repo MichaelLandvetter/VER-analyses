@@ -745,6 +745,16 @@ class VERMainWindow(QMainWindow):
         species_value = self.file_species_combo.currentText().strip()
         return "" if species_value == "(not set)" else species_value
 
+    def _on_species_changed(self, _value: str) -> None:
+        """Persist species selection immediately when changed in Box 2."""
+
+        try:
+            metadata = self.settings_manager.settings.setdefault("METADATA_CONFIG", {})
+            metadata["species"] = self._selected_species_value()
+            self.settings_manager.save_settings()
+        except Exception as exc:
+            log.warning("Could not persist species selection: %s", exc)
+
     def _launch_usb_test(self):
         """Launches the dedicated USB test program directly within the application."""
         # Import the GUI class from your USB test file
@@ -812,6 +822,7 @@ class VERMainWindow(QMainWindow):
         self.file_species_combo.addItems(self._species_options())
         saved_species = self.settings_manager.settings.get("METADATA_CONFIG", {}).get("species", "").strip()
         self._set_species_selection(saved_species)
+        self.file_species_combo.currentTextChanged.connect(self._on_species_changed)
 
         # --- Filter Widgets ---
         self.low_spin = QDoubleSpinBox()
@@ -1679,6 +1690,7 @@ class VERMainWindow(QMainWindow):
                 })
                 continue
             conf = confidence_results.get(mode) or {}
+            classification_cell = _bool(conf["classification_pass"]) if "classification_pass" in conf else "—"
             row = [
                 mode,
                 _fmt(pr["Peak-1"]["latency_ms"]),
@@ -1690,7 +1702,7 @@ class VERMainWindow(QMainWindow):
                 _fmt(pr["Peak-3"]["latency_ms"]),
                 _fmt(pr["Peak-3"]["snr"]),
                 _bool(pr["Peak-3"]["above_threshold"]),
-                _bool(conf.get("classification_pass", pr["VER_detected"])),
+                classification_cell,
             ]
             table_data.append(row)
             metrics.append({

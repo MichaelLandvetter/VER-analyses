@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 
@@ -38,3 +39,29 @@ def test_filter_compare_csv_contains_provenance_and_confidence_fields():
     ]
     for field in required_fields:
         assert f'"{field}"' in VER_MAIN
+
+
+def test_validate_filter_bounds_enforces_nyquist_and_ordering_rules():
+    tree = ast.parse(VER_MAIN)
+    target = None
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == "VERMainWindow":
+            for child in node.body:
+                if isinstance(child, ast.FunctionDef) and child.name == "_validate_filter_bounds":
+                    target = child
+                    break
+            if target is not None:
+                break
+    assert target is not None
+
+    module = ast.Module(body=[target], type_ignores=[])
+    ast.fix_missing_locations(module)
+    namespace = {"ACQ_CONFIG": {"sample_rate": 250}}
+    exec(compile(module, filename="ver_main.py", mode="exec"), namespace)
+    fn = namespace["_validate_filter_bounds"]
+
+    assert fn(object(), 0.0, 32.0) == (True, "")
+    ok, msg = fn(object(), 12.0, 12.0)
+    assert ok is False and "less than high cut" in msg
+    ok, msg = fn(object(), 0.0, 125.0)
+    assert ok is False and "Nyquist" in msg
