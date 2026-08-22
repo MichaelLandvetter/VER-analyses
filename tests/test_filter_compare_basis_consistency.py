@@ -208,6 +208,11 @@ def _build_compare_callable():
 def _run_case(tmp_path: Path, raw_session_averages, session_averages, accepted_counts):
     run_compare = _build_compare_callable()
     epoch_time_ms = np.array([-100.0, 0.0, 100.0, 200.0], dtype=float)
+    if session_averages is None:
+        session_averages = []
+        for raw in raw_session_averages:
+            raw_arr = np.asarray(raw, dtype=float)
+            session_averages.append(raw_arr - float(raw_arr[0]))
     stub = SimpleNamespace(
         scope=SimpleNamespace(
             epoch_time_ms=epoch_time_ms,
@@ -237,7 +242,7 @@ def test_filter_compare_single_ver_case_keeps_report_basis_checksum(tmp_path):
     rows = _run_case(
         tmp_path,
         raw_session_averages=[[1.0, 5.0, -3.0, 2.0]],
-        session_averages=[[0.0, 4.0, -4.0, 1.0]],
+        session_averages=None,
         accepted_counts=[120],
     )
     butter = next(row for row in rows if row["mode"] == "butter")
@@ -254,10 +259,7 @@ def test_filter_compare_multi_ver_case_uses_all_completed_sessions(tmp_path):
             [1.0, 5.0, -3.0, 2.0],
             [1.0, 3.0, -5.0, 2.0],
         ],
-        session_averages=[
-            [0.0, 4.0, -4.0, 1.0],
-            [0.0, 2.0, -6.0, 1.0],
-        ],
+        session_averages=None,
         accepted_counts=[118, 120],
     )
     butter = next(row for row in rows if row["mode"] == "butter")

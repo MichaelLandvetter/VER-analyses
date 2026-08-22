@@ -1801,8 +1801,8 @@ class VERMainWindow(QMainWindow):
         table_data = []
         metrics: list[dict] = []
         for mode in modes:
-            pr = peak_results.get(mode)
-            if pr is None:
+            pr_for_mode = peak_results.get(mode)
+            if pr_for_mode is None:
                 row = [mode] + ["—"] * (len(col_labels) - 1)
                 table_data.append(row)
                 metrics.append({
@@ -1846,37 +1846,37 @@ class VERMainWindow(QMainWindow):
             low_confidence_reasons: list[str] = []
             if not conf.get("classification_pass", False):
                 low_confidence_reasons.append("classification_constraints_failed")
-            if not pr["Peak-1"]["found"] or not pr["Peak-2"]["found"] or not pr["Peak-3"]["found"]:
+            if not pr_for_mode["Peak-1"]["found"] or not pr_for_mode["Peak-2"]["found"] or not pr_for_mode["Peak-3"]["found"]:
                 low_confidence_reasons.append("missing_required_peak")
             if mode in report_basis_match_warnings:
                 low_confidence_reasons.append("report_checksum_mismatch")
             row = [
                 mode,
-                _fmt(pr["Peak-1"]["latency_ms"]),
-                _fmt(pr["Peak-1"]["snr"]),
-                _bool(pr["Peak-1"]["above_threshold"]),
-                _fmt(pr["Peak-2"]["latency_ms"]),
-                _fmt(pr["Peak-2"]["snr"]),
-                _bool(pr["Peak-2"]["above_threshold"]),
-                _fmt(pr["Peak-3"]["latency_ms"]),
-                _fmt(pr["Peak-3"]["snr"]),
-                _bool(pr["Peak-3"]["above_threshold"]),
+                _fmt(pr_for_mode["Peak-1"]["latency_ms"]),
+                _fmt(pr_for_mode["Peak-1"]["snr"]),
+                _bool(pr_for_mode["Peak-1"]["above_threshold"]),
+                _fmt(pr_for_mode["Peak-2"]["latency_ms"]),
+                _fmt(pr_for_mode["Peak-2"]["snr"]),
+                _bool(pr_for_mode["Peak-2"]["above_threshold"]),
+                _fmt(pr_for_mode["Peak-3"]["latency_ms"]),
+                _fmt(pr_for_mode["Peak-3"]["snr"]),
+                _bool(pr_for_mode["Peak-3"]["above_threshold"]),
                 classification_cell,
             ]
             table_data.append(row)
             metrics.append({
                 "mode": mode,
-                "p1_latency_ms": pr["Peak-1"]["latency_ms"],
-                "p1_snr": pr["Peak-1"]["snr"],
-                "p1_above_threshold": pr["Peak-1"]["above_threshold"],
-                "p2_latency_ms": pr["Peak-2"]["latency_ms"],
-                "p2_snr": pr["Peak-2"]["snr"],
-                "p2_above_threshold": pr["Peak-2"]["above_threshold"],
-                "p3_latency_ms": pr["Peak-3"]["latency_ms"],
-                "p3_snr": pr["Peak-3"]["snr"],
-                "p3_above_threshold": pr["Peak-3"]["above_threshold"],
-                "VER_detected": pr["VER_detected"],
-                "noise_rms": pr["noise_rms"],
+                "p1_latency_ms": pr_for_mode["Peak-1"]["latency_ms"],
+                "p1_snr": pr_for_mode["Peak-1"]["snr"],
+                "p1_above_threshold": pr_for_mode["Peak-1"]["above_threshold"],
+                "p2_latency_ms": pr_for_mode["Peak-2"]["latency_ms"],
+                "p2_snr": pr_for_mode["Peak-2"]["snr"],
+                "p2_above_threshold": pr_for_mode["Peak-2"]["above_threshold"],
+                "p3_latency_ms": pr_for_mode["Peak-3"]["latency_ms"],
+                "p3_snr": pr_for_mode["Peak-3"]["snr"],
+                "p3_above_threshold": pr_for_mode["Peak-3"]["above_threshold"],
+                "VER_detected": pr_for_mode["VER_detected"],
+                "noise_rms": pr_for_mode["noise_rms"],
                 "classification_pass": conf.get("classification_pass"),
                 "scale_range_pass": conf.get("Scale Range"),
                 "minimum_power_pass": conf.get("Minimum Power"),
