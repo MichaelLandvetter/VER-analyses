@@ -715,6 +715,7 @@ class VERMainWindow(QMainWindow):
         self.session_artifact_rejection_enabled = []
         self.session_artifact_exclusion_thresholds = []
         self._scope_panel_session = None
+        self._last_open_dir = None
 
         self.bandpass = BandpassFilter()
         self.scope = VERScopeProcessor(self.bandpass)
@@ -1144,10 +1145,11 @@ class VERMainWindow(QMainWindow):
         dlg.exec()
 
     def _select_data_file(self, initial: bool = False):
-        default_path = str(Path.cwd())
+        default_path = self._last_open_dir if self._last_open_dir else str(Path.cwd())
         selected, _ = QFileDialog.getOpenFileName(self, "Select raw data file", default_path, "Text Files (*.txt);;All Files (*)")
         
         if selected:
+            self._last_open_dir = str(Path(selected).parent)
             self.data_file = selected
             self.suggest_exclusion_btn.setEnabled(True)
             self.file_label.setText(f"Selected: \n\n{Path(selected).name}")
