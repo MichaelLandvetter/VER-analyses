@@ -95,6 +95,7 @@ from ver_analysis_flow import (
 
 log = logging.getLogger(__name__)
 ARTIFACT_THRESHOLD_MIN_UV = 0.0001
+ARTIFACT_THRESHOLD_MAX_UV = 100.0
 PEAK_DETECTION_MODE_OPTIONS = {
     "legacy_top3": "Legacy: top 3 extrema by amplitude",
     "dominant_opposite_neighbors": "Dominant peak + opposite-polarity neighbors",
@@ -115,9 +116,9 @@ def _refresh_runtime_classifier_settings(classifier_cfg: dict | None) -> None:
 
 
 def _clamp_artifact_threshold(threshold_uv: float) -> float:
-    """Clamp a candidate threshold to the minimum supported positive value."""
+    """Clamp a candidate threshold to the supported positive range."""
 
-    return max(float(threshold_uv), ARTIFACT_THRESHOLD_MIN_UV)
+    return min(max(float(threshold_uv), ARTIFACT_THRESHOLD_MIN_UV), ARTIFACT_THRESHOLD_MAX_UV)
 
 
 def prompt_analysis_complete_action(parent) -> str:
@@ -285,13 +286,7 @@ class ExclusionTuningDialog(QDialog):
                 self.current_threshold_uv,
             )
         peak_values = np.asarray(self.suggestion.peak_values_uv, dtype=float)
-        peak_max = float(np.max(peak_values)) if peak_values.size else self.current_threshold_uv
-        self.max_threshold_uv = max(
-            ARTIFACT_THRESHOLD_MIN_UV * 2,
-            peak_max * 1.1,
-            float(self.suggestion.suggested_threshold_uv) * 1.2,
-            self.current_threshold_uv * 1.2,
-        )
+        self.max_threshold_uv = ARTIFACT_THRESHOLD_MAX_UV
 
         layout = QVBoxLayout(self)
         metric_label = QLabel(
@@ -1075,7 +1070,7 @@ class VERMainWindow(QMainWindow):
         self.set_artifact_enabled.toggled.connect(self._sync_artifact_settings_from_ui)
 
         self.set_artifact_threshold = QDoubleSpinBox()
-        self.set_artifact_threshold.setRange(ARTIFACT_THRESHOLD_MIN_UV, 10.0)
+        self.set_artifact_threshold.setRange(ARTIFACT_THRESHOLD_MIN_UV, ARTIFACT_THRESHOLD_MAX_UV)
         self.set_artifact_threshold.setSingleStep(0.001)
         self.set_artifact_threshold.setDecimals(4)
         self.set_artifact_threshold.setValue(
