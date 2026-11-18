@@ -368,26 +368,28 @@ class ExclusionTuningDialog(QDialog):
             text.setPos(0.5, 0.5)
 
         suggested = float(self.suggestion.suggested_threshold_uv)
-        # Reference line: auto-suggested threshold (+)
-        self.signal_plot.addItem(
-            pg.InfiniteLine(
-                pos=suggested,
-                angle=0,
-                pen=pg.mkPen((0, 170, 255), width=1, style=Qt.PenStyle.DashLine),
-                label="Auto +T",
-                labelOpts={"position": 0.02, "color": "#66ccff", "fill": (0, 0, 0, 160)},
+        # A non-finite auto suggestion would place lines at NaN, which breaks pyqtgraph auto-range.
+        if np.isfinite(suggested):
+            # Reference line: auto-suggested threshold (+)
+            self.signal_plot.addItem(
+                pg.InfiniteLine(
+                    pos=suggested,
+                    angle=0,
+                    pen=pg.mkPen((0, 170, 255), width=1, style=Qt.PenStyle.DashLine),
+                    label="Auto +T",
+                    labelOpts={"position": 0.02, "color": "#66ccff", "fill": (0, 0, 0, 160)},
+                )
             )
-        )
-        # Reference line: auto-suggested threshold (-)
-        self.signal_plot.addItem(
-            pg.InfiniteLine(
-                pos=-suggested,
-                angle=0,
-                pen=pg.mkPen((0, 170, 255), width=1, style=Qt.PenStyle.DashLine),
-                label="Auto −T",
-                labelOpts={"position": 0.98, "color": "#66ccff", "fill": (0, 0, 0, 160)},
+            # Reference line: auto-suggested threshold (-)
+            self.signal_plot.addItem(
+                pg.InfiniteLine(
+                    pos=-suggested,
+                    angle=0,
+                    pen=pg.mkPen((0, 170, 255), width=1, style=Qt.PenStyle.DashLine),
+                    label="Auto −T",
+                    labelOpts={"position": 0.98, "color": "#66ccff", "fill": (0, 0, 0, 160)},
+                )
             )
-        )
         # Reference line: current configured threshold (+)
         self.signal_plot.addItem(
             pg.InfiniteLine(
