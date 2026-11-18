@@ -134,7 +134,9 @@ def suggest_exclusion_from_file(
     for sample in simulator.stream_samples():
         result = scope.process_sample(bool(sample[0]), float(sample[1]))
         if result["epoch_complete"] and result["completed_epoch"] is not None:
-            epoch_peak_abs.append(float(np.max(np.abs(result["completed_epoch"]))))
+            peak = float(np.max(np.abs(result["completed_epoch"])))
+            if np.isfinite(peak):
+                epoch_peak_abs.append(peak)
 
         # Collect downsampled streaming-filtered signal for the signal plot.
         filt_val = stream_filter.process_sample(float(sample[1]))
