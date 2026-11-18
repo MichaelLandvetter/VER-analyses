@@ -353,9 +353,6 @@ class ExclusionTuningDialog(QDialog):
                 time_s,
                 filtered_signal,
                 pen=pg.mkPen((0, 200, 120), width=1),
-                autoDownsample=True,
-                downsampleMethod="mean",
-                clipToView=True,
             )
         else:
             # No signal data available — show a placeholder message.
