@@ -19,10 +19,9 @@ def test_repair_keeps_length_and_interpolates_gap():
 
 
 def test_epoch_overlapping_gap_is_rejected_not_averaged():
-    config = {"pre_ms": 0, "post_ms": 0, "artifact_exclusion_uv": 100.0,
+    config = {"pre_stim_ms": 8, "post_stim_ms": 12, "artifact_exclusion_uv": 100.0,
               "artifact_rejection_enabled": True, "flashes_per_session": 1000}
     scope = VERScopeProcessor(_PassThroughFilter(), epoch_config=config)
-    scope.pre_samples, scope.post_samples = 2, 3
     scope.pre_buffer.clear()
     scope.pre_bad.clear()
     scope.pre_buffer.extend([0.0, 0.0])
@@ -37,3 +36,20 @@ def test_epoch_overlapping_gap_is_rejected_not_averaged():
     assert completed[0]["epoch_rejected"] is True
     assert scope.flash_count == 1
     assert scope.flash_count_accepted == 0
+
+
+def test_gap_epochs_are_counted_separately_per_session():
+    config = {"pre_stim_ms": 8, "post_stim_ms": 12, "artifact_exclusion_uv": 100.0,
+              "artifact_rejection_enabled": True, "flashes_per_session": 2}
+    scope = VERScopeProcessor(_PassThroughFilter(), epoch_config=config)
+    scope.pre_buffer.extend([0.0, 0.0])
+    scope.pre_bad.extend([False, False])
+
+    samples = [(1, 0.0, True), (0, 0.0, False), (0, 0.0, False), (0, 0.0, False),
+               (1, 0.0, False), (0, 0.0, False), (0, 0.0, False), (0, 0.0, False)]
+    results = [scope.process_sample(bool(t), v, is_bad=b) for t, v, b in samples]
+    completed = [r for r in results if r.get("session_complete")]
+
+    assert len(completed) == 1
+    assert completed[0]["completed_session_flash_count_gap"] == 1
+    assert scope.flash_count_gap == 0
