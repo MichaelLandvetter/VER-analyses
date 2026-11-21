@@ -53,3 +53,20 @@ def test_gap_epochs_are_counted_separately_per_session():
     assert len(completed) == 1
     assert completed[0]["completed_session_flash_count_gap"] == 1
     assert scope.flash_count_gap == 0
+
+
+def test_summary_csv_reports_gap_excluded_count(tmp_path):
+    from ver_report import _write_summary_csv
+
+    wavelet = np.ones((3, 10))
+    freqs = np.array([1.0, 2.0, 3.0])
+    time_ms = np.arange(10) * 4.0
+    path = tmp_path / "summary.csv"
+    _write_summary_csv(
+        path, [wavelet], freqs, time_ms, None, [10],
+        session_flash_counts_accepted=[8],
+        session_flash_counts_gap=[2],
+    )
+    header, row = path.read_text(encoding="utf-8").splitlines()[:2]
+    assert header.split(",")[-1] == "N_flashes_gap_excluded"
+    assert row.split(",")[-1] == "2"

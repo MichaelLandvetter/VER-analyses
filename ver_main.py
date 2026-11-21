@@ -706,6 +706,7 @@ class VERMainWindow(QMainWindow):
         self.session_ver_peaks = []
         self.session_flash_counts = []
         self.session_flash_counts_accepted = []
+        self.session_flash_counts_gap = []
         self.session_artifact_rejection_enabled = []
         self.session_artifact_exclusion_thresholds = []
         self._scope_panel_session = None
@@ -1458,6 +1459,7 @@ class VERMainWindow(QMainWindow):
         self.session_ver_peaks = []
         self.session_flash_counts = []
         self.session_flash_counts_accepted = []
+        self.session_flash_counts_gap = []
         self.session_artifact_rejection_enabled = []
         self.session_artifact_exclusion_thresholds = []
         self._scope_panel_session = None
@@ -2188,6 +2190,7 @@ class VERMainWindow(QMainWindow):
         self.session_ver_peaks.append(ver_peaks)
         self.session_flash_counts.append(flash_count)
         self.session_flash_counts_accepted.append(flash_count_accepted)
+        self.session_flash_counts_gap.append(flash_count_gap)
         self.session_artifact_rejection_enabled.append(artifact_rejection_enabled)
         self.session_artifact_exclusion_thresholds.append(artifact_exclusion_threshold)
 
@@ -2341,6 +2344,7 @@ class VERMainWindow(QMainWindow):
                 session_flash_counts_accepted=self.session_flash_counts_accepted if self.session_flash_counts_accepted else None,
                 session_artifact_rejection_enabled=self.session_artifact_rejection_enabled if self.session_artifact_rejection_enabled else None,
                 session_artifact_exclusion_thresholds=self.session_artifact_exclusion_thresholds if self.session_artifact_exclusion_thresholds else None,
+                session_flash_counts_gap=self.session_flash_counts_gap if self.session_flash_counts_gap else None,
                 force_stem=live_experiment_name,
                 output_dir=live_output_dir,
             )
@@ -2404,6 +2408,7 @@ class VERMainWindow(QMainWindow):
                         session_flash_counts_accepted=self.session_flash_counts_accepted if self.session_flash_counts_accepted else None,
                         session_artifact_rejection_enabled=self.session_artifact_rejection_enabled if self.session_artifact_rejection_enabled else None,
                         session_artifact_exclusion_thresholds=self.session_artifact_exclusion_thresholds if self.session_artifact_exclusion_thresholds else None,
+                        session_flash_counts_gap=self.session_flash_counts_gap if self.session_flash_counts_gap else None,
                         human_overrides=overrides,
                         force_stem=original_stem,
                         output_dir=live_output_dir,
