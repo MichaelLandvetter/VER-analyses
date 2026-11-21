@@ -435,7 +435,8 @@ def _build_figures_page(
 
     # 2. Establish a floor for zero/negative values to avoid math errors in log space
     # We'll set the floor to 1/1000th of the absolute maximum power value
-    max_val = np.max(combined_wavelets)
+    finite_wavelets = combined_wavelets[np.isfinite(combined_wavelets)]
+    max_val = float(finite_wavelets.max()) if finite_wavelets.size else 0.0
     min_val = max_val / 1000.0
 
     # 3. Paint the canvas using a true Logarithmic Normalization scale
@@ -457,7 +458,8 @@ def _build_figures_page(
         #cmap="cubehelix",
         #cmap="inferno",        
         #cmap="viridis",
-        norm=colors.LogNorm(vmin=min_val, vmax=max_val)  # Replaces vmin/vmax with log norm
+        # LogNorm needs 0 < vmin < vmax; an all-zero or all-rejected session falls back to linear scaling
+        norm=colors.LogNorm(vmin=min_val, vmax=max_val) if max_val > 0 else None,
     )
     
     # 4. Enforce the exact logarithmic scale profile and matching limits

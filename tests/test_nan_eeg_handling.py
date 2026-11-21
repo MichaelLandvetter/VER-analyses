@@ -70,3 +70,23 @@ def test_summary_csv_reports_gap_excluded_count(tmp_path):
     header, row = path.read_text(encoding="utf-8").splitlines()[:2]
     assert header.split(",")[-1] == "N_flashes_gap_excluded"
     assert row.split(",")[-1] == "2"
+
+
+def test_report_figures_handle_all_zero_session():
+    import matplotlib
+    matplotlib.use("Agg")
+    from ver_report import _build_figures_page
+
+    epoch_ms = np.linspace(-100.0, 400.0, 50)
+    wavelets = [np.zeros((4, 50)), np.zeros((4, 50))]
+    freqs = np.array([1.0, 2.0, 4.0, 8.0])
+    fig = _build_figures_page(
+        averages=np.zeros((2, 50)),
+        epoch_time_ms=epoch_ms,
+        session_wavelets=wavelets,
+        session_wavelet_freqs=freqs,
+        freq_min=1.0,
+        freq_max=8.0,
+        labels=["Block 1", "Block 2"],
+    )
+    fig.canvas.draw()
