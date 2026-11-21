@@ -58,6 +58,7 @@ def save_ver_report(
     session_flash_counts_accepted: Optional[List[Optional[int]]] = None,
     session_artifact_rejection_enabled: Optional[List[Optional[bool]]] = None,
     session_artifact_exclusion_thresholds: Optional[List[Optional[float]]] = None,
+    session_flash_counts_gap: Optional[List[Optional[int]]] = None,
     human_overrides: Optional[List[bool]] = None,
     force_stem: Optional[str] = None,
     output_dir: Optional[Path] = None,
@@ -153,6 +154,7 @@ def save_ver_report(
         session_flash_counts_accepted,
         session_artifact_rejection_enabled=session_artifact_rejection_enabled,
         session_artifact_exclusion_thresholds=session_artifact_exclusion_thresholds,
+        session_flash_counts_gap=session_flash_counts_gap,
     )
     print(f"Saved summary CSV: {summary_path}")
 
@@ -178,6 +180,7 @@ def _write_summary_csv(
     session_flash_counts_accepted: Optional[List[Optional[int]]] = None,
     session_artifact_rejection_enabled: Optional[List[Optional[bool]]] = None,
     session_artifact_exclusion_thresholds: Optional[List[Optional[float]]] = None,
+    session_flash_counts_gap: Optional[List[Optional[int]]] = None,
 ) -> None:
     """Write per-block summary statistics to a CSV file with perfectly aligned columns."""
 
@@ -206,7 +209,7 @@ def _write_summary_csv(
             "Peak1_latency_ms", "Peak1_amplitude", "Peak1_SNR",
             "Peak2_latency_ms", "Peak2_amplitude", "Peak2_SNR",
             "Peak3_latency_ms", "Peak3_amplitude", "Peak3_SNR",
-            "Exclusion_Enabled", "Exclusion_Threshold",
+            "Exclusion_Enabled", "Exclusion_Threshold", "N_flashes_gap_excluded",
         ])
         
         for idx, wavelet in enumerate(session_wavelets):
@@ -228,6 +231,10 @@ def _write_summary_csv(
                         if fa is not None:
                             n_flashes_accepted = fa
                             n_flashes_rejected = fc - fa
+
+            n_flashes_gap = ""
+            if session_flash_counts_gap and idx < len(session_flash_counts_gap) and session_flash_counts_gap[idx] is not None:
+                n_flashes_gap = session_flash_counts_gap[idx]
 
             exclusion_enabled = EPOCH_CONFIG.get("artifact_rejection_enabled", True)
             if session_artifact_rejection_enabled and idx < len(session_artifact_rejection_enabled):
@@ -309,7 +316,7 @@ def _write_summary_csv(
                 p1_lat, p1_amp, p1_snr,
                 p2_lat, p2_amp, p2_snr,
                 p3_lat, p3_amp, p3_snr,
-                exclusion_enabled, exclusion_threshold,
+                exclusion_enabled, exclusion_threshold, n_flashes_gap,
             ])
 
 def _write_waveforms_csv(

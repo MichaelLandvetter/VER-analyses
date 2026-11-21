@@ -706,6 +706,7 @@ class VERMainWindow(QMainWindow):
         self.session_ver_peaks = []
         self.session_flash_counts = []
         self.session_flash_counts_accepted = []
+        self.session_flash_counts_gap = []
         self.session_artifact_rejection_enabled = []
         self.session_artifact_exclusion_thresholds = []
         self._scope_panel_session = None
@@ -1458,6 +1459,7 @@ class VERMainWindow(QMainWindow):
         self.session_ver_peaks = []
         self.session_flash_counts = []
         self.session_flash_counts_accepted = []
+        self.session_flash_counts_gap = []
         self.session_artifact_rejection_enabled = []
         self.session_artifact_exclusion_thresholds = []
         self._scope_panel_session = None
@@ -2068,13 +2070,14 @@ class VERMainWindow(QMainWindow):
     def _handle_single_sample(self, sample: np.ndarray):
         trigger = bool(sample[0])
         eeg = float(sample[1])
+        is_bad = len(sample) > 2 and sample[2] > 0
         filtered = self.bandpass.process_sample(eeg)
 
-        scope_result = self.scope.process_sample(trigger, eeg)
+        scope_result = self.scope.process_sample(trigger, eeg, is_bad=bool(is_bad))
         self.display.update_scroll_panel(eeg, filtered, scope_result["trigger_detected"])
 
         current_session = scope_result["session_number"] 
-        self._set_progress(current_session, scope_result["flash_count"], scope_result.get("flash_count_accepted")) 
+        self._set_progress(current_session, scope_result["flash_count"], scope_result.get("flash_count_accepted"), scope_result.get("flash_count_gap", 0)) 
 
         if scope_result["epoch_complete"]:
             if self._scope_panel_session != current_session:
@@ -2097,6 +2100,7 @@ class VERMainWindow(QMainWindow):
                 session_num,
                 flash_count=scope_result.get("completed_session_flash_count"),
                 flash_count_accepted=scope_result.get("completed_session_flash_count_accepted"),
+                flash_count_gap=scope_result.get("completed_session_flash_count_gap"),
                 artifact_rejection_enabled=scope_result.get("artifact_rejection_enabled"),
                 artifact_exclusion_threshold=scope_result.get("artifact_exclusion_threshold"),
             )
@@ -2110,13 +2114,14 @@ class VERMainWindow(QMainWindow):
                 self.stop_acquisition()
                 self.save_report()
 
-    def _set_progress(self, session_number: int, flash_count: int, flash_count_accepted: int | None = None): 
+    def _set_progress(self, session_number: int, flash_count: int, flash_count_accepted: int | None = None, flash_count_gap: int = 0): 
         # Calculate how many seconds one block takes (flashes / 2 Hz)
         seconds_per_block = int(EPOCH_CONFIG['flashes_per_session'] / 2.0)
         flash_total = EPOCH_CONFIG['flashes_per_session']
         if flash_count_accepted is not None:
             rejected = flash_count - flash_count_accepted
-            flash_text = f"Flash {flash_count}/{flash_total} | Accepted {flash_count_accepted} | Rejected {rejected}"
+            gap_text = f" (gap {flash_count_gap})" if flash_count_gap else ""
+            flash_text = f"Flash {flash_count}/{flash_total} | Accepted {flash_count_accepted} | Rejected {rejected}{gap_text}"
         else:
             flash_text = f"Flash {flash_count}/{flash_total}"
         self.progress_label.setText(
@@ -2133,6 +2138,7 @@ class VERMainWindow(QMainWindow):
                     partial_session["session_number"],
                     flash_count=partial_session["flash_count"],
                     flash_count_accepted=partial_session.get("flash_count_accepted"),
+                    flash_count_gap=partial_session.get("flash_count_gap"),
                     artifact_rejection_enabled=partial_session.get("artifact_rejection_enabled"),
                     artifact_exclusion_threshold=partial_session.get("artifact_exclusion_threshold"),
                 )
@@ -2170,6 +2176,7 @@ class VERMainWindow(QMainWindow):
         flash_count_accepted: int | None = None,
         artifact_rejection_enabled: bool | None = None,
         artifact_exclusion_threshold: float | None = None,
+        flash_count_gap: int | None = None,
     ):
         power, freqs = compute_wavelet_scalogram(session_avg)
         self.session_wavelets.append(power)
@@ -2183,6 +2190,7 @@ class VERMainWindow(QMainWindow):
         self.session_ver_peaks.append(ver_peaks)
         self.session_flash_counts.append(flash_count)
         self.session_flash_counts_accepted.append(flash_count_accepted)
+        self.session_flash_counts_gap.append(flash_count_gap)
         self.session_artifact_rejection_enabled.append(artifact_rejection_enabled)
         self.session_artifact_exclusion_thresholds.append(artifact_exclusion_threshold)
 
@@ -2190,7 +2198,8 @@ class VERMainWindow(QMainWindow):
         label = f"{seconds} s"
         
         if flash_count_accepted is not None and flash_count is not None:
-            label = f"{label} (Acc {flash_count_accepted}/{flash_count})"
+            gap_text = f", gap {flash_count_gap}" if flash_count_gap else ""
+            label = f"{label} (Acc {flash_count_accepted}/{flash_count}{gap_text})"
         elif flash_count is not None and flash_count != EPOCH_CONFIG["flashes_per_session"]:
             label = f"{label} ({flash_count}/{EPOCH_CONFIG['flashes_per_session']})"
         self.session_labels.append(label)
@@ -2335,6 +2344,7 @@ class VERMainWindow(QMainWindow):
                 session_flash_counts_accepted=self.session_flash_counts_accepted if self.session_flash_counts_accepted else None,
                 session_artifact_rejection_enabled=self.session_artifact_rejection_enabled if self.session_artifact_rejection_enabled else None,
                 session_artifact_exclusion_thresholds=self.session_artifact_exclusion_thresholds if self.session_artifact_exclusion_thresholds else None,
+                session_flash_counts_gap=self.session_flash_counts_gap if self.session_flash_counts_gap else None,
                 force_stem=live_experiment_name,
                 output_dir=live_output_dir,
             )
@@ -2398,6 +2408,7 @@ class VERMainWindow(QMainWindow):
                         session_flash_counts_accepted=self.session_flash_counts_accepted if self.session_flash_counts_accepted else None,
                         session_artifact_rejection_enabled=self.session_artifact_rejection_enabled if self.session_artifact_rejection_enabled else None,
                         session_artifact_exclusion_thresholds=self.session_artifact_exclusion_thresholds if self.session_artifact_exclusion_thresholds else None,
+                        session_flash_counts_gap=self.session_flash_counts_gap if self.session_flash_counts_gap else None,
                         human_overrides=overrides,
                         force_stem=original_stem,
                         output_dir=live_output_dir,
