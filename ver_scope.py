@@ -29,6 +29,7 @@ class VERScopeProcessor:
 
     def reset(self) -> None:
         self.pre_buffer = deque(maxlen=self.pre_samples)
+        self.pre_bad = deque(maxlen=self.pre_samples)
         self.prev_trigger = 0.0
         self.pending_epochs: List[Dict[str, object]] = []
         self.session_epochs: List[np.ndarray] = []
@@ -90,12 +91,13 @@ class VERScopeProcessor:
         # flash_count_accepted is already included from _finalize_current_session
         return partial_session
 
-    def process_sample(self, trigger_value: float, eeg_sample: float) -> dict:
+    def process_sample(self, trigger_value: float, eeg_sample: float, is_bad: bool = False) -> dict:
         artifact_enabled, threshold = self._artifact_settings()
         result = {
             "trigger_detected": False,
             "epoch_complete": False,
             "epoch_rejected": False,
+            "epoch_has_gap": False,
             "session_complete": False,
             "completed_epoch": None,
             "running_average": self.running_average,
@@ -113,14 +115,16 @@ class VERScopeProcessor:
 
         for pending in list(self.pending_epochs):
             pending["samples"].append(float(eeg_sample))
+            pending["has_gap"] = bool(pending["has_gap"]) or bool(is_bad)
             pending["remaining"] -= 1
             if pending["remaining"] <= 0:
                 epoch = np.asarray(pending["samples"][: self.epoch_samples], dtype=float)
                 baseline = float(np.mean(epoch[: self.pre_samples])) if self.pre_samples > 0 else float(np.mean(epoch))
                 filtered_epoch = self.bandpass_filter.apply_zero_phase(epoch, baseline_mean=baseline)
 
-                # --- Artifact rejection ---
-                epoch_rejected = artifact_enabled and np.any(np.abs(filtered_epoch) > threshold)
+                # --- Artifact rejection; epochs overlapping interpolated (non-finite) input are never averaged ---
+                epoch_has_gap = bool(pending["has_gap"])
+                epoch_rejected = epoch_has_gap or (artifact_enabled and np.any(np.abs(filtered_epoch) > threshold))
                 self.flash_count += 1  # always count total triggers
 
                 if not epoch_rejected:
@@ -133,6 +137,7 @@ class VERScopeProcessor:
                     {
                         "epoch_complete": True,
                         "epoch_rejected": epoch_rejected,
+                        "epoch_has_gap": epoch_has_gap,
                         "completed_epoch": filtered_epoch,
                         "running_average": self.running_average,
                         "flash_count": self.flash_count,
@@ -167,11 +172,13 @@ class VERScopeProcessor:
                     {
                         "samples": pre + [float(eeg_sample)],
                         "remaining": max(0, self.post_samples - 1),
+                        "has_gap": any(self.pre_bad) or bool(is_bad),
                     }
                 )
                 result["trigger_detected"] = True
 
         self.pre_buffer.append(float(eeg_sample))
+        self.pre_bad.append(bool(is_bad))
         self.prev_trigger = float(trigger_value)
         return result
 

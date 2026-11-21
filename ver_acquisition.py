@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 import struct
 from pathlib import Path
@@ -10,6 +11,26 @@ from typing import Generator, Optional
 import numpy as np
 
 from ver_config import ACQ_CONFIG, FILE_CONFIG, SERIAL_CONFIG
+
+log = logging.getLogger(__name__)
+
+
+def repair_nonfinite_eeg(eeg: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Fill NaN/inf EEG samples by linear interpolation, keeping the sample count unchanged.
+
+    Returns the repaired trace and a boolean mask marking the filled samples. Filled
+    samples must not contribute to averages; callers reject epochs that overlap them.
+    """
+    eeg = np.asarray(eeg, dtype=float)
+    bad = ~np.isfinite(eeg)
+    if not bad.any():
+        return eeg, bad
+    if bad.all():
+        return np.zeros_like(eeg), bad
+    good_idx = np.flatnonzero(~bad)
+    repaired = eeg.copy()
+    repaired[bad] = np.interp(np.flatnonzero(bad), good_idx, eeg[good_idx])
+    return repaired, bad
 
 
 class FileAcquisitionSimulator:
@@ -60,7 +81,15 @@ class FileAcquisitionSimulator:
 
         next_yield_time = time.perf_counter()
 
-        for row in data:
+        eeg_repaired, eeg_bad = repair_nonfinite_eeg(data[:, eeg_column])
+        if eeg_bad.any():
+            log.warning(
+                "%d non-finite EEG samples in %s were interpolated and their epochs excluded",
+                int(eeg_bad.sum()),
+                self.file_path.name,
+            )
+
+        for idx, row in enumerate(data):
             trigger_value = float(row[trigger_column])
             if trigger_mode == "level" or trigger_mode == "threshold":
                 trigger = trigger_value > trigger_threshold
@@ -69,8 +98,10 @@ class FileAcquisitionSimulator:
             else:
                 raise ValueError(f"Unsupported trigger mode: {trigger_mode}")
 
-            eeg = float(row[eeg_column])
-            yield np.asarray([1.0 if trigger else 0.0, eeg], dtype=float)
+            yield np.asarray(
+                [1.0 if trigger else 0.0, eeg_repaired[idx], 1.0 if eeg_bad[idx] else 0.0],
+                dtype=float,
+            )
             
             # --- DYNAMIC SPEED TRACKING LOGIC ---
             # 1. Read speed INSIDE the loop so live UI changes work instantly!

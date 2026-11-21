@@ -2068,9 +2068,10 @@ class VERMainWindow(QMainWindow):
     def _handle_single_sample(self, sample: np.ndarray):
         trigger = bool(sample[0])
         eeg = float(sample[1])
+        is_bad = len(sample) > 2 and sample[2] > 0
         filtered = self.bandpass.process_sample(eeg)
 
-        scope_result = self.scope.process_sample(trigger, eeg)
+        scope_result = self.scope.process_sample(trigger, eeg, is_bad=bool(is_bad))
         self.display.update_scroll_panel(eeg, filtered, scope_result["trigger_detected"])
 
         current_session = scope_result["session_number"] 

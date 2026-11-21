@@ -1,0 +1,39 @@
+import numpy as np
+
+from ver_acquisition import repair_nonfinite_eeg
+from ver_scope import VERScopeProcessor
+
+
+class _PassThroughFilter:
+    def apply_zero_phase(self, epoch, baseline_mean=0.0):
+        return epoch
+
+
+def test_repair_keeps_length_and_interpolates_gap():
+    eeg = np.array([1.0, 2.0, np.nan, np.nan, 5.0])
+    repaired, bad = repair_nonfinite_eeg(eeg)
+    assert repaired.shape == eeg.shape
+    assert np.all(np.isfinite(repaired))
+    assert np.allclose(repaired[2:4], [3.0, 4.0])
+    assert bad.tolist() == [False, False, True, True, False]
+
+
+def test_epoch_overlapping_gap_is_rejected_not_averaged():
+    config = {"pre_ms": 0, "post_ms": 0, "artifact_exclusion_uv": 100.0,
+              "artifact_rejection_enabled": True, "flashes_per_session": 1000}
+    scope = VERScopeProcessor(_PassThroughFilter(), epoch_config=config)
+    scope.pre_samples, scope.post_samples = 2, 3
+    scope.pre_buffer.clear()
+    scope.pre_bad.clear()
+    scope.pre_buffer.extend([0.0, 0.0])
+    scope.pre_bad.extend([False, False])
+
+    samples = [(1, 0.0, True), (0, 0.0, False), (0, 0.0, False), (0, 0.0, False)]
+    results = [scope.process_sample(bool(t), v, is_bad=b) for t, v, b in samples]
+    completed = [r for r in results if r.get("epoch_complete")]
+
+    assert len(completed) == 1
+    assert completed[0]["epoch_has_gap"] is True
+    assert completed[0]["epoch_rejected"] is True
+    assert scope.flash_count == 1
+    assert scope.flash_count_accepted == 0

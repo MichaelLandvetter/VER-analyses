@@ -132,8 +132,9 @@ def suggest_exclusion_from_file(
     sample_index = 0
 
     for sample in simulator.stream_samples():
-        result = scope.process_sample(bool(sample[0]), float(sample[1]))
-        if result["epoch_complete"] and result["completed_epoch"] is not None:
+        is_bad = len(sample) > 2 and sample[2] > 0
+        result = scope.process_sample(bool(sample[0]), float(sample[1]), is_bad=bool(is_bad))
+        if result["epoch_complete"] and result["completed_epoch"] is not None and not result["epoch_has_gap"]:
             peak = float(np.max(np.abs(result["completed_epoch"])))
             if np.isfinite(peak):
                 epoch_peak_abs.append(peak)
